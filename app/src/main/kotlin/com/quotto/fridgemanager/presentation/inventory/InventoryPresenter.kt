@@ -12,7 +12,7 @@ sealed interface InventoryUiState {
 class InventoryPresenter(
     private val repository: InventoryRepository,
 ) {
-    fun currentState(): InventoryUiState = runCatching {
+    suspend fun currentState(): InventoryUiState = runCatching {
         if (repository.hasItems()) InventoryUiState.Content else InventoryUiState.Empty
     }.getOrElse {
         InventoryUiState.Error("在庫を読み込めませんでした。再試行してください")

@@ -87,11 +87,13 @@ class FridgeManagerAppTest {
     fun 在庫読込エラーから再試行して空状態を表示できる() {
         var attempts = 0
         val repository = object : InventoryRepository {
-            override fun hasItems(): Boolean {
+            override suspend fun hasItems(): Boolean {
                 attempts += 1
                 if (attempts == 1) error("一時的な読込失敗")
                 return false
             }
+            override suspend fun getAll() = emptyList<com.quotto.fridgemanager.domain.inventory.StoredIngredient>()
+            override suspend fun saveBatch(batch: com.quotto.fridgemanager.domain.inventory.InventoryBatch) = Unit
         }
         composeRule.setContent {
             FridgeManagerApp(container = DefaultAppContainer(repository))

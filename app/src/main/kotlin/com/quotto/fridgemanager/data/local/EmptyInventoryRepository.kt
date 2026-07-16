@@ -1,8 +1,12 @@
 package com.quotto.fridgemanager.data.local
 
 import com.quotto.fridgemanager.domain.inventory.InventoryRepository
+import com.quotto.fridgemanager.domain.inventory.InventoryBatch
+import com.quotto.fridgemanager.domain.inventory.StoredIngredient
 
-/** Room実装が導入されるまで使用する、永続化を行わない空の実装。 */
+/** Preview・テストで使用する、永続化を行わない空の実装。 */
 class EmptyInventoryRepository : InventoryRepository {
-    override fun hasItems(): Boolean = false
+    override suspend fun hasItems(): Boolean = false
+    override suspend fun getAll(): List<StoredIngredient> = emptyList()
+    override suspend fun saveBatch(batch: InventoryBatch) = Unit
 }
