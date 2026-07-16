@@ -3,4 +3,7 @@
     <exclude
         domain="root"
         path="." />
+    <exclude
+        domain="database"
+        path="." />
 </full-backup-content>

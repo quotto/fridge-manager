@@ -8,7 +8,7 @@ import com.quotto.fridgemanager.di.DefaultAppContainer
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val container = DefaultAppContainer()
+        val container = DefaultAppContainer(context = applicationContext)
         setContent {
             FridgeManagerApp(container = container)
         }

@@ -26,7 +26,7 @@ import com.quotto.fridgemanager.ui.feature.settings.SettingsScreen
 @Composable
 fun AppNavigation(
     initialInventoryState: InventoryUiState,
-    onReloadInventory: () -> InventoryUiState,
+    onReloadInventory: () -> Unit,
 ) {
     val controller = rememberNavController()
     val currentRoute = controller.currentBackStackEntryAsState().value?.destination?.route
@@ -66,7 +66,7 @@ fun AppNavigation(
                     state = inventoryState,
                     onManualRegistration = { controller.navigate(AppDestination.Registration.route) },
                     onImageAnalysis = { controller.navigate(AppDestination.ImageAnalysis.route) },
-                    onRetry = { inventoryState = onReloadInventory() },
+                    onRetry = onReloadInventory,
                 )
             }
             composable(AppDestination.Registration.route) {

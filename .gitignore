@@ -4,6 +4,7 @@
 
 # Android / Gradle build outputs
 .gradle/
+.kotlin/
 **/build/
 local.properties
 captures/
