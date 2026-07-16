@@ -8,7 +8,7 @@
 
 - 要件の正本は `docs/requirements.md` とする。
 - 作業の正本は GitHub Issues と GitHub Project とする。
-- ローカルの計画資料は `issues/001/`、調査・レビュー記録は `work/` に置く。
+- 計画、タスク分解、依存関係、見積り、担当、進捗、計画に関する調査・レビュー記録は GitHub Issues と GitHub Project だけで管理し、リポジトリ内に重複する計画ファイルを作成しない。
 - 要件と実装が矛盾する場合は、実装を進めず manager に報告する。
 
 ## チーム
