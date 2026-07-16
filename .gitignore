@@ -1,0 +1,32 @@
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iml
+
+# Android / Gradle build outputs
+.gradle/
+**/build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Signing material must never be committed
+*.jks
+*.keystore
+keystore.properties
+
+# OS generated files
+.DS_Store
+
+# Node.js / TypeScript / AWS CDK outputs
+node_modules/
+dist/
+coverage/
+cdk.out/
+*.tsbuildinfo
+
+# Local environment and secret files
+.env
+.env.*
+!.env.example
+npm-debug.log*
