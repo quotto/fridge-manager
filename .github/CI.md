@@ -21,7 +21,7 @@ npm run synth
 trivy config --exit-code 1 --severity HIGH,CRITICAL cdk.out
 ```
 
-`npm audit` は全イベントで npm の既知脆弱性を検査する。依存関係レビューは Pull Request の Gradle・npm・GitHub Actions を含む依存関係差分を対象とし、重大度 `high` 以上の既知脆弱性を拒否する。検証証跡には GitHub Actions のチェック結果とログを使用する。テストデータや機微情報が混入し得るため、ビルド出力、テストレポート、カバレッジ結果は artifact として保存しない。
+`npm audit` は全イベントで npm の既知脆弱性を検査する。依存関係レビューは、private repository で GitHub Code Security または GitHub Advanced Security を有効化し、Repository variable `DEPENDENCY_REVIEW_ENABLED=true` を設定した場合だけ実行する。利用できない環境では、npm audit、Dependabot、固定済み lockfile と Action SHA を必須統制とする。検証証跡には GitHub Actions のチェック結果とログを使用する。テストデータや機微情報が混入し得るため、ビルド出力、テストレポート、カバレッジ結果は artifact として保存しない。
 
 ## 必須チェック
 
@@ -29,7 +29,6 @@ trivy config --exit-code 1 --severity HIGH,CRITICAL cdk.out
 
 - `Android lint / test / build`
 - `TypeScript lint / test / coverage / build / synth`
-- `Dependency review`（Pull Request のみ）
 - `npm dependency audit`
 - `Secret scan`
 - `IaC misconfiguration scan`
