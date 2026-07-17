@@ -7,9 +7,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -25,14 +22,12 @@ import com.quotto.fridgemanager.ui.feature.settings.SettingsScreen
 
 @Composable
 fun AppNavigation(
-    initialInventoryState: InventoryUiState,
+    inventoryState: InventoryUiState,
     onReloadInventory: () -> Unit,
 ) {
     val controller = rememberNavController()
     val currentRoute = controller.currentBackStackEntryAsState().value?.destination?.route
     val selectedDestination = AppDestination.selectedTopLevel(currentRoute)
-    var inventoryState by remember(initialInventoryState) { mutableStateOf(initialInventoryState) }
-
     Scaffold(
         bottomBar = {
             NavigationBar {
