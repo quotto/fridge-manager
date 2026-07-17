@@ -26,6 +26,27 @@ interface IngredientDao {
     )
     suspend fun searchByNormalizedName(normalizedQuery: String, limit: Int): List<IngredientEntity>
 
+    @Query("SELECT * FROM ingredients WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): IngredientEntity?
+
+    @Query(
+        """UPDATE ingredients SET display_name = :displayName, normalized_name = :normalizedName,
+           quantity = :quantity, unit = :unit, updated_at_epoch_millis = :updatedAt
+           WHERE id = :id AND updated_at_epoch_millis = :expectedUpdatedAt""",
+    )
+    suspend fun updateIfCurrent(
+        id: String,
+        expectedUpdatedAt: Long,
+        displayName: String,
+        normalizedName: String,
+        quantity: String,
+        unit: String,
+        updatedAt: Long,
+    ): Int
+
+    @Query("DELETE FROM ingredients WHERE id = :id AND updated_at_epoch_millis = :expectedUpdatedAt")
+    suspend fun deleteIfCurrent(id: String, expectedUpdatedAt: Long): Int
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     fun insertAll(entities: List<IngredientEntity>)
 }

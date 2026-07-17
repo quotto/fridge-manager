@@ -16,6 +16,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.quotto.fridgemanager.presentation.inventory.InventoryUiState
 import com.quotto.fridgemanager.presentation.registration.RegistrationPresenter
+import com.quotto.fridgemanager.presentation.inventory.IngredientUpdatePresenter
 import com.quotto.fridgemanager.ui.feature.image.ImageAnalysisScreen
 import com.quotto.fridgemanager.ui.feature.inventory.InventoryScreen
 import com.quotto.fridgemanager.ui.feature.registration.RegistrationScreen
@@ -26,6 +27,7 @@ import com.quotto.fridgemanager.ui.feature.settings.SettingsScreen
 fun AppNavigation(
     inventoryState: InventoryUiState,
     registrationPresenter: RegistrationPresenter,
+    ingredientUpdatePresenter: IngredientUpdatePresenter,
     onReloadInventory: () -> Unit,
 ) {
     val controller = rememberNavController()
@@ -65,6 +67,7 @@ fun AppNavigation(
                     onManualRegistration = { controller.navigate(AppDestination.Registration.route) },
                     onImageAnalysis = { controller.navigate(AppDestination.ImageAnalysis.route) },
                     onRetry = onReloadInventory,
+                    onEditIngredient = { controller.navigate(AppDestination.existingUpdateRoute(it)) },
                 )
             }
             composable(AppDestination.Registration.route) {
@@ -88,8 +91,12 @@ fun AppNavigation(
             composable(AppDestination.existingUpdatePattern) { entry ->
                 ExistingIngredientUpdateScreen(
                     ingredientId = entry.arguments?.getString("ingredientId").orEmpty(),
-                    presenter = registrationPresenter,
+                    presenter = ingredientUpdatePresenter,
                     onBack = { controller.popBackStack() },
+                    onChanged = {
+                        onReloadInventory()
+                        controller.popBackStack()
+                    },
                 )
             }
             composable(AppDestination.ImageAnalysis.route) {

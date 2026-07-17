@@ -14,6 +14,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.quotto.fridgemanager.domain.inventory.InventoryUnit
 import com.quotto.fridgemanager.domain.inventory.StoredIngredient
@@ -29,6 +31,7 @@ fun InventoryScreen(
     onManualRegistration: () -> Unit,
     onImageAnalysis: () -> Unit,
     onRetry: () -> Unit,
+    onEditIngredient: (String) -> Unit = {},
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(title = "在庫一覧")
@@ -50,6 +53,7 @@ fun InventoryScreen(
             )
             is InventoryUiState.Content -> InventoryList(
                 ingredients = state.ingredients,
+                onEditIngredient = onEditIngredient,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -59,6 +63,7 @@ fun InventoryScreen(
 @Composable
 private fun InventoryList(
     ingredients: List<StoredIngredient>,
+    onEditIngredient: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier.fillMaxWidth()) {
@@ -68,9 +73,10 @@ private fun InventoryList(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clickable(role = Role.Button) { onEditIngredient(ingredient.id) }
                     .clearAndSetSemantics {
                         contentDescription =
-                            "${ingredient.name.value}、数量 ${ingredient.quantity} ${ingredient.unit.talkBackLabel}、$stockStatus"
+                            "${ingredient.name.value}、数量 ${ingredient.quantity} ${ingredient.unit.talkBackLabel}、$stockStatus、編集"
                     }
                     .padding(horizontal = 16.dp, vertical = 12.dp),
             ) {
