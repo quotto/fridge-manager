@@ -8,12 +8,10 @@ import com.quotto.fridgemanager.domain.inventory.InventoryQuantity
 import com.quotto.fridgemanager.domain.inventory.InventoryRepository
 import com.quotto.fridgemanager.domain.inventory.InventoryUnit
 import com.quotto.fridgemanager.domain.inventory.StoredIngredient
+import com.quotto.fridgemanager.domain.inventory.DuplicateStoredIngredientException
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-
-class DuplicateStoredIngredientException(cause: Throwable) :
-    IllegalStateException("A normalized ingredient name already exists", cause)
 
 class CorruptStoredIngredientException(cause: Throwable? = null) :
     IllegalStateException("Stored ingredient data is invalid", cause)
@@ -31,6 +29,11 @@ class RoomInventoryRepository(
 
     override fun observeAll(): Flow<List<StoredIngredient>> =
         dao.observeAll().map { entities -> entities.map { it.toDomain() } }
+
+    override suspend fun searchByName(normalizedQuery: String): List<StoredIngredient> {
+        if (normalizedQuery.isEmpty()) return emptyList()
+        return dao.searchByNormalizedName(normalizedQuery, MAX_SUGGESTIONS).map { it.toDomain() }
+    }
 
     override suspend fun saveBatch(batch: InventoryBatch) {
         // InventoryBatchは生成時にも検証するが、永続化境界でも上限を防御する。
@@ -53,6 +56,10 @@ class RoomInventoryRepository(
             // 食材名やSQL引数を例外文へ含めない。
             throw DuplicateStoredIngredientException(error)
         }
+    }
+
+    private companion object {
+        const val MAX_SUGGESTIONS = 10
     }
 }
 

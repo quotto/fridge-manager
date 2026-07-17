@@ -44,6 +44,7 @@ class InventoryPresenterTest {
                 override fun observeAll(): Flow<List<StoredIngredient>> = flow {
                     error("機密なDB例外: secret-food")
                 }
+                override suspend fun searchByName(normalizedQuery: String) = emptyList<StoredIngredient>()
                 override suspend fun saveBatch(batch: com.quotto.fridgemanager.domain.inventory.InventoryBatch) = Unit
             },
         )
@@ -61,6 +62,7 @@ class InventoryPresenterTest {
         override suspend fun hasItems(): Boolean = items.isNotEmpty()
         override suspend fun getAll() = items
         override fun observeAll(): Flow<List<StoredIngredient>> = flowOf(items)
+        override suspend fun searchByName(normalizedQuery: String) = emptyList<StoredIngredient>()
         override suspend fun saveBatch(batch: com.quotto.fridgemanager.domain.inventory.InventoryBatch) = Unit
     }
 

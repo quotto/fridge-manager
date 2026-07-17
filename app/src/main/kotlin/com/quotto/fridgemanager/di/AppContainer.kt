@@ -6,11 +6,13 @@ import com.quotto.fridgemanager.data.local.InventoryDatabase
 import com.quotto.fridgemanager.data.local.RoomInventoryRepository
 import com.quotto.fridgemanager.domain.inventory.InventoryRepository
 import com.quotto.fridgemanager.presentation.inventory.InventoryPresenter
+import com.quotto.fridgemanager.presentation.registration.RegistrationPresenter
 
 /** アプリ全体の依存を生成するComposition Root。 */
 interface AppContainer {
     val inventoryRepository: InventoryRepository
     val inventoryPresenter: InventoryPresenter
+    val registrationPresenter: RegistrationPresenter
 }
 
 class DefaultAppContainer(
@@ -21,4 +23,5 @@ class DefaultAppContainer(
         ?: context?.let { RoomInventoryRepository(InventoryDatabase.create(it)) }
         ?: EmptyInventoryRepository()
     override val inventoryPresenter: InventoryPresenter = InventoryPresenter(this.inventoryRepository)
+    override val registrationPresenter: RegistrationPresenter = RegistrationPresenter(this.inventoryRepository)
 }

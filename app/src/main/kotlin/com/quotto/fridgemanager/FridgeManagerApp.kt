@@ -23,6 +23,7 @@ fun FridgeManagerApp(container: AppContainer) {
     FridgeManagerTheme {
         AppNavigation(
             inventoryState = inventoryState,
+            registrationPresenter = container.registrationPresenter,
             onReloadInventory = { subscriptionKey += 1 },
         )
     }
