@@ -100,7 +100,15 @@ fun AppNavigation(
                 )
             }
             composable(AppDestination.ImageAnalysis.route) {
-                ImageAnalysisScreen()
+                ImageAnalysisScreen(
+                    onManualRegistration = {
+                        controller.navigate(AppDestination.Registration.route)
+                    },
+                    onImageReadyForPreprocessing = { asset ->
+                        // #19 が前処理を接続するまで所有権を即時解放する。
+                        asset.close()
+                    },
+                )
             }
             composable(AppDestination.Settings.route) {
                 SettingsScreen()
