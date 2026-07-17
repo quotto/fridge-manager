@@ -30,7 +30,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.quotto.fridgemanager.image.CameraImageStore
 import com.quotto.fridgemanager.ui.component.ScreenHeader
-import java.io.Closeable
 
 enum class CameraMessage {
     None,
@@ -38,20 +37,7 @@ enum class CameraMessage {
 }
 
 /** #19 の前処理へ一時画像の所有権を移す境界。利用側は処理終了時に必ず close する。 */
-class ImageInputAsset(
-    val uri: Uri,
-    private val release: () -> Unit,
-) : Closeable {
-    private var closed = false
-
-    @Synchronized
-    override fun close() {
-        if (!closed) {
-            closed = true
-            release()
-        }
-    }
-}
+typealias ImageInputAsset = com.quotto.fridgemanager.image.ImageInputAsset
 
 @Composable
 fun ImageAnalysisScreen(

@@ -67,6 +67,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.exifinterface)
 
     ksp(libs.androidx.room.compiler)
 
