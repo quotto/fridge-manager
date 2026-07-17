@@ -39,9 +39,9 @@ class InventoryScreenTest {
         composeRule.onNodeWithText("豆腐", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithText("0 丁", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithText("在庫切れ", useUnmergedTree = true).assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("豆腐、数量 0 丁、在庫切れ").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("りんご、数量 2.5 個、在庫あり").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("小麦粉、数量 30 グラム、在庫あり").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("豆腐、数量 0 丁、在庫切れ、編集").assertIsDisplayed().assertHasClickAction()
+        composeRule.onNodeWithContentDescription("りんご、数量 2.5 個、在庫あり、編集").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("小麦粉、数量 30 グラム、在庫あり、編集").assertIsDisplayed()
         composeRule.onAllNodesWithContentDescription("りんご、数量 2.5 個、在庫切れ").assertCountEquals(0)
     }
 

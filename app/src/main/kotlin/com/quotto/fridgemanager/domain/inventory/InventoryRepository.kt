@@ -9,7 +9,17 @@ interface InventoryRepository {
     fun observeAll(): Flow<List<StoredIngredient>>
     suspend fun searchByName(normalizedQuery: String): List<StoredIngredient>
     suspend fun saveBatch(batch: InventoryBatch)
+    suspend fun getById(id: String): StoredIngredient? = getAll().firstOrNull { it.id == id }
+    suspend fun update(ingredient: StoredIngredient) {
+        throw UnsupportedOperationException("Inventory update is not supported")
+    }
+    suspend fun delete(ingredient: StoredIngredient) {
+        throw UnsupportedOperationException("Inventory deletion is not supported")
+    }
 }
 
 class DuplicateStoredIngredientException(cause: Throwable) :
     IllegalStateException("A normalized ingredient name already exists", cause)
+
+class StaleStoredIngredientException : IllegalStateException("Stored ingredient was changed")
+class StoredIngredientNotFoundException : IllegalStateException("Stored ingredient was not found")

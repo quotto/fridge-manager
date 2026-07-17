@@ -213,6 +213,95 @@ class RoomInventoryRepositoryTest {
         assertEquals(listOf("豆腐"), repository.getAll().map { it.name.value })
     }
 
+    @Test
+    fun update_preservesIdAndCreatedTimeAndPersistsEveryEditedField() = runBlocking {
+        val timedRepository = RoomInventoryRepository(database, idGenerator = { "stable-id" }, currentTimeMillis = { 10L })
+        timedRepository.saveBatch(InventoryBatch.create(listOf(IngredientDraft.create("豆腐", "1", "丁"))))
+        val current = timedRepository.getAll().single()
+
+        RoomInventoryRepository(database, currentTimeMillis = { 20L }).update(
+            current.copy(
+                name = com.quotto.fridgemanager.domain.inventory.IngredientName.from("木綿豆腐"),
+                quantity = com.quotto.fridgemanager.domain.inventory.InventoryQuantity.from("2.25"),
+                unit = com.quotto.fridgemanager.domain.inventory.InventoryUnit.PACK,
+            ),
+        )
+
+        val updated = repository.getAll().single()
+        assertEquals("stable-id", updated.id)
+        assertEquals(10L, updated.createdAtEpochMillis)
+        assertEquals(20L, updated.updatedAtEpochMillis)
+        assertEquals("木綿豆腐", updated.name.value)
+        assertEquals("2.25", updated.quantity.toString())
+        assertEquals("パック", updated.unit.symbol)
+    }
+
+    @Test
+    fun update_duplicateNormalizedNameRollsBackOriginalIngredient() = runBlocking {
+        repository.saveBatch(InventoryBatch.create(listOf(
+            IngredientDraft.create("豆腐", "1", "丁"),
+            IngredientDraft.create("牛乳", "1", "本"),
+        )))
+        val tofu = repository.getAll().first { it.name.value == "豆腐" }
+
+        assertThrows(DuplicateStoredIngredientException::class.java) {
+            runBlocking {
+                repository.update(tofu.copy(name = com.quotto.fridgemanager.domain.inventory.IngredientName.from(" 牛乳 ")))
+            }
+        }
+
+        assertEquals(listOf("牛乳", "豆腐"), repository.getAll().map { it.name.value })
+    }
+
+    @Test
+    fun delete_removesOnlyRequestedId() = runBlocking {
+        repository.saveBatch(InventoryBatch.create(listOf(
+            IngredientDraft.create("豆腐", "1", "丁"),
+            IngredientDraft.create("牛乳", "1", "本"),
+        )))
+        val tofu = repository.getAll().first { it.name.value == "豆腐" }
+
+        repository.delete(tofu)
+
+        assertEquals(listOf("牛乳"), repository.getAll().map { it.name.value })
+    }
+
+    @Test
+    fun staleUpdateAndDelete_areRejectedWithoutOverwritingTheWinningUpdate() = runBlocking {
+        val first = RoomInventoryRepository(database, idGenerator = { "id" }, currentTimeMillis = { 1L })
+        first.saveBatch(InventoryBatch.create(listOf(IngredientDraft.create("豆腐", "1", "丁"))))
+        val staleSnapshot = first.getAll().single()
+        RoomInventoryRepository(database, currentTimeMillis = { 2L }).update(
+            staleSnapshot.copy(quantity = com.quotto.fridgemanager.domain.inventory.InventoryQuantity.from("2")),
+        )
+
+        assertThrows(com.quotto.fridgemanager.domain.inventory.StaleStoredIngredientException::class.java) {
+            runBlocking { repository.update(staleSnapshot.copy(quantity = com.quotto.fridgemanager.domain.inventory.InventoryQuantity.from("3"))) }
+        }
+        assertThrows(com.quotto.fridgemanager.domain.inventory.StaleStoredIngredientException::class.java) {
+            runBlocking { repository.delete(staleSnapshot) }
+        }
+        assertEquals("2", repository.getAll().single().quantity.toString())
+    }
+
+    @Test
+    fun updateAndDelete_rejectMissingId() {
+        val missing = com.quotto.fridgemanager.domain.inventory.StoredIngredient(
+            id = "missing",
+            name = com.quotto.fridgemanager.domain.inventory.IngredientName.from("豆腐"),
+            quantity = com.quotto.fridgemanager.domain.inventory.InventoryQuantity.from("1"),
+            unit = com.quotto.fridgemanager.domain.inventory.InventoryUnit.TOFU,
+            createdAtEpochMillis = 1L,
+            updatedAtEpochMillis = 1L,
+        )
+        assertThrows(com.quotto.fridgemanager.domain.inventory.StoredIngredientNotFoundException::class.java) {
+            runBlocking { repository.update(missing) }
+        }
+        assertThrows(com.quotto.fridgemanager.domain.inventory.StoredIngredientNotFoundException::class.java) {
+            runBlocking { repository.delete(missing) }
+        }
+    }
+
     private fun ingredientEntity(
         id: String,
         displayName: String,
