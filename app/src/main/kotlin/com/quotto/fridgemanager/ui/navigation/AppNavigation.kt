@@ -15,14 +15,17 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.quotto.fridgemanager.presentation.inventory.InventoryUiState
+import com.quotto.fridgemanager.presentation.registration.RegistrationPresenter
 import com.quotto.fridgemanager.ui.feature.image.ImageAnalysisScreen
 import com.quotto.fridgemanager.ui.feature.inventory.InventoryScreen
 import com.quotto.fridgemanager.ui.feature.registration.RegistrationScreen
+import com.quotto.fridgemanager.ui.feature.registration.ExistingIngredientUpdateScreen
 import com.quotto.fridgemanager.ui.feature.settings.SettingsScreen
 
 @Composable
 fun AppNavigation(
     inventoryState: InventoryUiState,
+    registrationPresenter: RegistrationPresenter,
     onReloadInventory: () -> Unit,
 ) {
     val controller = rememberNavController()
@@ -66,11 +69,27 @@ fun AppNavigation(
             }
             composable(AppDestination.Registration.route) {
                 RegistrationScreen(
+                    presenter = registrationPresenter,
                     onBack = {
                         if (!controller.popBackStack()) {
                             controller.navigate(AppDestination.Inventory.route)
                         }
                     },
+                    onSaved = {
+                        onReloadInventory()
+                        controller.popBackStack()
+                    },
+                    // 編集本体は後続Story。既存IDを渡す導線境界だけを用意する。
+                    onEditIngredient = {
+                        controller.navigate(AppDestination.existingUpdateRoute(it))
+                    },
+                )
+            }
+            composable(AppDestination.existingUpdatePattern) { entry ->
+                ExistingIngredientUpdateScreen(
+                    ingredientId = entry.arguments?.getString("ingredientId").orEmpty(),
+                    presenter = registrationPresenter,
+                    onBack = { controller.popBackStack() },
                 )
             }
             composable(AppDestination.ImageAnalysis.route) {

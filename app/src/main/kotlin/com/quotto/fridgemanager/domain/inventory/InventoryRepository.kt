@@ -7,5 +7,9 @@ interface InventoryRepository {
     suspend fun hasItems(): Boolean
     suspend fun getAll(): List<StoredIngredient>
     fun observeAll(): Flow<List<StoredIngredient>>
+    suspend fun searchByName(normalizedQuery: String): List<StoredIngredient>
     suspend fun saveBatch(batch: InventoryBatch)
 }
+
+class DuplicateStoredIngredientException(cause: Throwable) :
+    IllegalStateException("A normalized ingredient name already exists", cause)

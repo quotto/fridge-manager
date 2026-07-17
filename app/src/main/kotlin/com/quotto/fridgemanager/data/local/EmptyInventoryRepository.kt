@@ -11,5 +11,6 @@ class EmptyInventoryRepository : InventoryRepository {
     override suspend fun hasItems(): Boolean = false
     override suspend fun getAll(): List<StoredIngredient> = emptyList()
     override fun observeAll(): Flow<List<StoredIngredient>> = flowOf(emptyList())
+    override suspend fun searchByName(normalizedQuery: String): List<StoredIngredient> = emptyList()
     override suspend fun saveBatch(batch: InventoryBatch) = Unit
 }

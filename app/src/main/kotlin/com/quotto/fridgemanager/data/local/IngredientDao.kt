@@ -17,6 +17,15 @@ interface IngredientDao {
     @Query("SELECT EXISTS(SELECT 1 FROM ingredients LIMIT 1)")
     suspend fun hasItems(): Boolean
 
+    @Query(
+        """SELECT * FROM ingredients
+           WHERE instr(normalized_name, :normalizedQuery) > 0
+           ORDER BY CASE WHEN normalized_name = :normalizedQuery THEN 0 ELSE 1 END,
+                    normalized_name ASC, id ASC
+           LIMIT :limit""",
+    )
+    suspend fun searchByNormalizedName(normalizedQuery: String, limit: Int): List<IngredientEntity>
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     fun insertAll(entities: List<IngredientEntity>)
 }

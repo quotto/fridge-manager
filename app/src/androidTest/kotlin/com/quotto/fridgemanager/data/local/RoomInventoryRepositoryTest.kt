@@ -170,6 +170,31 @@ class RoomInventoryRepositoryTest {
     }
 
     @Test
+    fun searchByName_usesLiteralBoundSubstringAndRanksExactFirst() = runBlocking {
+        repository.saveBatch(
+            InventoryBatch.create(
+                listOf(
+                    IngredientDraft.create("牛乳パン", "1", "個"),
+                    IngredientDraft.create("牛乳", "2", "本"),
+                    IngredientDraft.create("100%牛乳", "1", "本"),
+                    IngredientDraft.create("100X牛乳", "1", "本"),
+                    IngredientDraft.create("在庫_候補", "1", "個"),
+                    IngredientDraft.create("在庫\\候補", "1", "個"),
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf("牛乳", "100%牛乳", "100X牛乳", "牛乳パン"),
+            repository.searchByName("牛乳").map { it.name.value },
+        )
+        assertEquals(listOf("100%牛乳"), repository.searchByName("100%").map { it.name.value })
+        assertEquals(listOf("在庫_候補"), repository.searchByName("_").map { it.name.value })
+        assertEquals(listOf("在庫\\候補"), repository.searchByName("\\").map { it.name.value })
+        assertEquals(emptyList<Any>(), repository.searchByName(""))
+    }
+
+    @Test
     fun concurrentDuplicateWrites_leaveExactlyOneValidRow() = runBlocking {
         val results = supervisorScope {
             List(2) {

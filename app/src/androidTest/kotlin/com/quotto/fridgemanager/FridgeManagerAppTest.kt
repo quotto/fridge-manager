@@ -96,6 +96,8 @@ class FridgeManagerAppTest {
                 if (attempts == 1) error("一時的な読込失敗")
                 emit(emptyList())
             }
+            override suspend fun searchByName(normalizedQuery: String) =
+                emptyList<com.quotto.fridgemanager.domain.inventory.StoredIngredient>()
             override suspend fun saveBatch(batch: com.quotto.fridgemanager.domain.inventory.InventoryBatch) = Unit
         }
         composeRule.setContent {

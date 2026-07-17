@@ -18,7 +18,11 @@ enum class AppDestination(
 
         fun selectedTopLevel(route: String?): AppDestination? = when (route) {
             Registration.route -> Inventory
-            else -> topLevel.firstOrNull { it.route == route }
+            else -> if (route?.startsWith("inventory/update/") == true) Inventory
+            else topLevel.firstOrNull { it.route == route }
         }
+
+        const val existingUpdatePattern: String = "inventory/update/{ingredientId}"
+        fun existingUpdateRoute(ingredientId: String): String = "inventory/update/$ingredientId"
     }
 }
