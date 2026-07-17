@@ -13,6 +13,10 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -49,6 +53,30 @@ class RoomInventoryRepositoryTest {
         assertEquals(30, repository.getAll().size)
         assertEquals("食材01", repository.getAll().first().name.value)
         assertEquals("1.25", repository.getAll().first().quantity.toString())
+    }
+
+    @Test
+    fun observeAll_emitsNameOrderedContentAfterSaveWithoutResubscription() = runBlocking {
+        val initialEmission = CompletableDeferred<Unit>()
+        val observed = async {
+            repository.observeAll()
+                .onEach { if (!initialEmission.isCompleted) initialEmission.complete(Unit) }
+                .take(2)
+                .toList()
+        }
+        initialEmission.await()
+
+        repository.saveBatch(
+            InventoryBatch.create(
+                listOf(
+                    IngredientDraft.create("りんご", "2", "個"),
+                    IngredientDraft.create("豆腐", "0", "丁"),
+                ),
+            ),
+        )
+
+        assertEquals(emptyList<Any>(), observed.await().first())
+        assertEquals(listOf("りんご", "豆腐"), observed.await().last().map { it.name.value })
     }
 
     @Test

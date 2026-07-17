@@ -9,6 +9,8 @@ import com.quotto.fridgemanager.domain.inventory.InventoryRepository
 import com.quotto.fridgemanager.domain.inventory.InventoryUnit
 import com.quotto.fridgemanager.domain.inventory.StoredIngredient
 import java.util.UUID
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 class DuplicateStoredIngredientException(cause: Throwable) :
     IllegalStateException("A normalized ingredient name already exists", cause)
@@ -26,6 +28,9 @@ class RoomInventoryRepository(
     override suspend fun hasItems(): Boolean = dao.hasItems()
 
     override suspend fun getAll(): List<StoredIngredient> = dao.getAll().map { it.toDomain() }
+
+    override fun observeAll(): Flow<List<StoredIngredient>> =
+        dao.observeAll().map { entities -> entities.map { it.toDomain() } }
 
     override suspend fun saveBatch(batch: InventoryBatch) {
         // InventoryBatchは生成時にも検証するが、永続化境界でも上限を防御する。
