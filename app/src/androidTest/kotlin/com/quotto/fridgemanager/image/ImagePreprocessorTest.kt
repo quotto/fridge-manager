@@ -71,6 +71,20 @@ class ImagePreprocessorTest {
     }
 
     @Test
+    fun `短辺479は警告し480境界は警告しない`() {
+        listOf(479 to 700, 700 to 479).forEach { (width, height) ->
+            val source = jpeg(width, height, ExifInterface.ORIENTATION_NORMAL)
+            preprocess(ImageInputAsset(Uri.fromFile(source)) { source.delete() }).use {
+                assertTrue(it.lowResolutionWarning)
+            }
+        }
+        val source = jpeg(480, 700, ExifInterface.ORIENTATION_NORMAL)
+        preprocess(ImageInputAsset(Uri.fromFile(source)) { source.delete() }).use {
+            assertFalse(it.lowResolutionWarning)
+        }
+    }
+
+    @Test
     fun `APNGとanimated WebPをデコード前に拒否する`() {
         val apng = File.createTempFile("animated-", ".png", context.cacheDir).apply {
             outputStream().use { out ->

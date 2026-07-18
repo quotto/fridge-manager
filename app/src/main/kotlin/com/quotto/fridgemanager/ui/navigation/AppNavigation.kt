@@ -104,9 +104,8 @@ fun AppNavigation(
                     onManualRegistration = {
                         controller.navigate(AppDestination.Registration.route)
                     },
-                    onImageReadyForPreprocessing = { asset ->
-                        // #19 が前処理を接続するまで所有権を即時解放する。
-                        asset.close()
+                    onSendImage = {
+                        // #26 がAPI送信を接続する。呼出完了後は画面側が成果物を破棄する。
                     },
                 )
             }
