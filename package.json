@@ -19,6 +19,7 @@
     "ajv-formats": "^3.0.1",
     "aws-cdk-lib": "^2.205.0",
     "constructs": "^10.4.2",
+    "firebase-admin": "^14.2.0",
     "jpeg-js": "^0.4.4"
   },
   "devDependencies": {
@@ -46,7 +47,8 @@
     "collectCoverageFrom": [
       "infra/lib/**/*.ts",
       "infra/lambda/**/*.ts",
-      "!infra/lambda/index.ts"
+      "!infra/lambda/index.ts",
+      "!infra/lambda/firebase-authorizer-index.ts"
     ],
     "coverageThreshold": {
       "global": {
