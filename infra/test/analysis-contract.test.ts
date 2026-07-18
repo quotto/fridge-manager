@@ -5,6 +5,7 @@ describe('AI解析API契約', () => {
   const openApi = JSON.parse(readFileSync(resolve('infra/api/openapi.json'), 'utf8')) as Record<string, unknown>;
   const request = JSON.parse(readFileSync(resolve('infra/api/schemas/analysis-request.schema.json'), 'utf8')) as Record<string, unknown>;
   const response = JSON.parse(readFileSync(resolve('infra/api/schemas/analysis-response.schema.json'), 'utf8')) as Record<string, unknown>;
+  const candidate = JSON.parse(readFileSync(resolve('infra/api/schemas/food-candidate.schema.json'), 'utf8')) as Record<string, unknown>;
 
   it('OpenAPI 3.0契約で正常・主要異常レスポンスを定義する', () => {
     expect(openApi).toMatchObject({ openapi: expect.stringMatching(/^3\.0\./), paths: { '/v1/analysis': { post: {
@@ -36,5 +37,15 @@ describe('AI解析API契約', () => {
     for (const code of ['TIMEOUT', 'PROVIDER_UNAVAILABLE', 'QUOTA_EXCEEDED', 'INVALID_IMAGE', 'UNANALYZABLE_IMAGE', 'INTERNAL_ERROR']) {
       expect(serialized).toContain(code);
     }
+  });
+
+  it('食材候補schemaを正本として追加プロパティ、数量、単位、不明値を制約する', () => {
+    expect(response).toMatchObject({ oneOf: expect.arrayContaining([
+      expect.objectContaining({ properties: expect.objectContaining({ candidates: expect.objectContaining({ items: { $ref: 'food-candidate.schema.json' } }) }) }),
+    ]) });
+    expect(candidate).toMatchObject({ additionalProperties: false, required: ['name', 'quantity', 'unit', 'evidence', 'requiresReview'], properties: {
+      quantity: { type: ['string', 'null'] }, unit: { type: ['string', 'null'] },
+      evidence: { enum: ['VISIBLE_COUNT', 'PACKAGE_LABEL', 'VISUAL_ESTIMATE', 'UNKNOWN'] },
+    } });
   });
 });

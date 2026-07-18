@@ -5,6 +5,10 @@ import Ajv2020 from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
 import requestSchema from '../api/schemas/analysis-request.schema.json';
 import responseSchema from '../api/schemas/analysis-response.schema.json';
+import candidateSchema from '../api/schemas/food-candidate.schema.json';
+import { ValidatedAnalysisResult, validateProviderResult } from './provider-boundary';
+
+export type { AnalysisProviderResult } from './provider-boundary';
 
 export type AnalysisMode = 'new' | 'update';
 export interface AnalysisRequest {
@@ -13,13 +17,7 @@ export interface AnalysisRequest {
   readonly image: { readonly mediaType: 'image/jpeg'; readonly base64: string };
   readonly currentItems?: readonly { readonly name: string; readonly quantity: string; readonly unit: string }[];
 }
-export interface AnalysisProviderResult {
-  readonly requestId: string;
-  readonly status: 'succeeded';
-  readonly candidates: readonly unknown[];
-  readonly warnings: readonly string[];
-}
-export interface AnalysisProvider { analyze(request: AnalysisRequest): Promise<AnalysisProviderResult>; }
+export interface AnalysisProvider { analyze(request: AnalysisRequest): Promise<unknown>; }
 export type IdempotencyClaim = { readonly kind: 'claimed' } | { readonly kind: 'conflict' } |
   { readonly kind: 'duplicate'; readonly status: 'IN_PROGRESS' | 'COMPLETED' };
 export interface IdempotencyStore {
@@ -44,6 +42,7 @@ const QUANTITY = /^(?:(?:0|[1-9][0-9]?)(?:\.[0-9]{1,2})?|100)$/;
 const UNITS = new Set(['g', 'kg', 'ml', 'L', '個', '本', '枚', '袋', 'パック', '箱', '缶', '瓶', '束', '株', '玉', '丁', '尾', '切れ', '房', '合', '食']);
 const ajv = new Ajv2020({ allErrors: true, strict: true, strictRequired: false });
 addFormats(ajv);
+ajv.addSchema(candidateSchema);
 const validateRequestSchema = ajv.compile(requestSchema);
 const validateResponseSchema = ajv.compile(responseSchema);
 
@@ -119,7 +118,7 @@ function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function response(statusCode: number, requestId: string | undefined, code?: ErrorCode, retryAt?: string, result?: AnalysisProviderResult): APIGatewayProxyStructuredResultV2 {
+function response(statusCode: number, requestId: string | undefined, code?: ErrorCode, retryAt?: string, result?: ValidatedAnalysisResult): APIGatewayProxyStructuredResultV2 {
   const headers: Record<string, string> = { 'content-type': 'application/json', 'cache-control': 'no-store' };
   if (requestId) headers['x-request-id'] = requestId;
   return { statusCode, headers, body: JSON.stringify(result ?? {
@@ -150,8 +149,9 @@ export function createAnalysisHandler(deps: { readonly provider: AnalysisProvide
       if (claim.kind === 'conflict') return response(409, request.requestId, 'IDEMPOTENCY_CONFLICT');
       if (claim.kind === 'duplicate') return response(409, request.requestId, 'DUPLICATE_REQUEST');
       claimed = true;
-      const result = await deps.provider.analyze(request);
-      if (!validateResponseSchema(result) || result.requestId !== request.requestId) throw new AnalysisError('UNANALYZABLE_IMAGE', 422);
+      const rawResult = await deps.provider.analyze(request);
+      const result = validateProviderResult(rawResult, request.requestId);
+      if (!result || !validateResponseSchema(result)) throw new AnalysisError('UNANALYZABLE_IMAGE', 422);
       await deps.idempotencyStore.complete(`${userHash}#${request.requestId}`);
       return response(200, request.requestId, undefined, undefined, result);
     } catch (error) {

@@ -32,6 +32,14 @@ function apiGatewaySchema(value: unknown): unknown {
   return result;
 }
 
+function inlineSchemaReference(value: unknown, reference: string, schema: unknown): unknown {
+  if (Array.isArray(value)) return value.map((child) => inlineSchemaReference(child, reference, schema));
+  if (!value || typeof value !== 'object') return value;
+  if ((value as Record<string, unknown>).$ref === reference) return schema;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .map(([key, child]) => [key, inlineSchemaReference(child, reference, schema)]));
+}
+
 export class AnalysisApiStack extends Stack {
   public constructor(scope: Construct, id: string, props: AnalysisApiStackProps) {
     super(scope, id, props);
@@ -52,7 +60,9 @@ export class AnalysisApiStack extends Stack {
     const specification = JSON.parse(readFileSync(resolve('infra/api/openapi.json'), 'utf8')) as Record<string, unknown>;
     const components = (specification.components as { schemas: Record<string, unknown> }).schemas;
     components.AnalysisRequest = apiGatewaySchema(JSON.parse(readFileSync(resolve('infra/api/schemas/analysis-request.schema.json'), 'utf8')) as unknown);
-    components.AnalysisResponse = apiGatewaySchema(JSON.parse(readFileSync(resolve('infra/api/schemas/analysis-response.schema.json'), 'utf8')) as unknown);
+    const candidateSchema = JSON.parse(readFileSync(resolve('infra/api/schemas/food-candidate.schema.json'), 'utf8')) as unknown;
+    const responseSchema = JSON.parse(readFileSync(resolve('infra/api/schemas/analysis-response.schema.json'), 'utf8')) as unknown;
+    components.AnalysisResponse = apiGatewaySchema(inlineSchemaReference(responseSchema, 'food-candidate.schema.json', candidateSchema));
     const paths = specification.paths as Record<string, Record<string, Record<string, unknown>>>;
     const post = paths['/v1/analysis']?.post;
     if (!post) throw new Error('OpenAPIにPOST /v1/analysisがありません');
