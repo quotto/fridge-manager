@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "analysis-request.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["requestId", "mode", "image"],
+  "properties": {
+    "requestId": { "type": "string", "format": "uuid" },
+    "mode": { "type": "string", "enum": ["new", "update"] },
+    "image": {
+      "type": "object", "additionalProperties": false, "required": ["mediaType", "base64"],
+      "properties": {
+        "mediaType": { "const": "image/jpeg" },
+        "base64": { "type": "string", "minLength": 16, "maxLength": 4194304, "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$" }
+      }
+    },
+    "currentItems": {
+      "type": "array", "minItems": 1, "maxItems": 30,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["name", "quantity", "unit"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 30 },
+          "quantity": { "type": "string", "pattern": "^(?:(?:0|[1-9][0-9]?)(?:\\.[0-9]{1,2})?|100)$" },
+          "unit": { "type": "string", "enum": ["g","kg","ml","L","個","本","枚","袋","パック","箱","缶","瓶","束","株","玉","丁","尾","切れ","房","合","食"] }
+        }
+      }
+    }
+  },
+  "allOf": [
+    { "if": { "properties": { "mode": { "const": "new" } } }, "then": { "not": { "required": ["currentItems"] } } },
+    { "if": { "properties": { "mode": { "const": "update" } } }, "then": { "required": ["currentItems"] } }
+  ]
+}
