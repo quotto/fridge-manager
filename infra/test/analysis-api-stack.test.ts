@@ -12,11 +12,25 @@ describe('AnalysisApiStack', () => {
     template.hasResourceProperties('AWS::ApiGateway::RestApi', { Body: Match.objectLike({
       paths: Match.objectLike({ '/v1/analysis': Match.objectLike({ post: Match.anyValue() }) }),
     }) });
-    template.resourceCountIs('AWS::Lambda::Function', 1);
+    template.resourceCountIs('AWS::Lambda::Function', 2);
     const rendered = JSON.stringify(template.toJSON());
     expect(rendered).toContain('4194304');
     expect(rendered).toContain('additionalProperties');
     expect(rendered).not.toContain('./schemas/analysis-request.schema.json');
+  });
+
+  it('cacheなしREQUEST authorizerで双方のtoken検証前に解析Lambdaへ到達させない', () => {
+    const rendered = JSON.stringify(template.toJSON());
+    expect(rendered).toContain('method.request.header.Authorization,method.request.header.X-Firebase-AppCheck');
+    expect(rendered).toContain('authorizerResultTtlInSeconds');
+    expect(rendered).toContain('FirebaseAuthorizer');
+    expect(rendered).toContain('authorizers/*');
+    template.hasResourceProperties('AWS::Lambda::Function', { Environment: { Variables: Match.objectLike({
+      FIREBASE_PROJECT_ID: { Ref: 'FirebaseProjectId' },
+      FIREBASE_PROJECT_NUMBER: { Ref: 'FirebaseProjectNumber' },
+      GOOGLE_WIF_AUDIENCE: { Ref: 'GoogleWifAudience' },
+      GOOGLE_SERVICE_ACCOUNT_EMAIL: { Ref: 'GoogleServiceAccountEmail' },
+    }) } });
   });
 
   it('requestId単位の冪等性ストアをTTL・暗号化付きで作る', () => {
