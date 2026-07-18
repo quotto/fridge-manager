@@ -40,6 +40,21 @@ function event(body: unknown, overrides: Partial<APIGatewayProxyEventV2> = {}): 
 }
 
 const jpeg = encode({ data: Buffer.from([255, 0, 0, 255]), width: 1, height: 1 }, 85).data.toString('base64');
+const oversizedDimensionJpeg = (() => {
+  const bytes = Buffer.from(jpeg, 'base64');
+  const sof = bytes.indexOf(Buffer.from([0xff, 0xc0]));
+  if (sof < 0) throw new Error('テストJPEGにSOF0がありません');
+  bytes.writeUInt16BE(2049, sof + 7);
+  return bytes.toString('base64');
+})();
+const oversizedPixelCountJpeg = (() => {
+  const bytes = Buffer.from(jpeg, 'base64');
+  const sof = bytes.indexOf(Buffer.from([0xff, 0xc0]));
+  if (sof < 0) throw new Error('テストJPEGにSOF0がありません');
+  bytes.writeUInt16BE(2000, sof + 5);
+  bytes.writeUInt16BE(2001, sof + 7);
+  return bytes.toString('base64');
+})();
 const validRequest = { requestId: '018f47a0-90c0-7d54-b92d-4285f7fb3312', mode: 'new', image: { mediaType: 'image/jpeg', base64: jpeg } };
 
 describe('AI解析Lambda', () => {
@@ -128,6 +143,11 @@ describe('AI解析Lambda', () => {
     ['requestId不正', { ...validRequest, requestId: 'bad' }, 'INVALID_REQUEST'],
     ['更新時の対象なし', { ...validRequest, mode: 'update' }, 'INVALID_REQUEST'],
     ['magic bytes不正', { ...validRequest, image: { mediaType: 'image/jpeg', base64: Buffer.from('not jpeg').toString('base64') } }, 'INVALID_IMAGE'],
+    ['JPEG外形だけを偽装したデコード不能画像', { ...validRequest, image: { mediaType: 'image/jpeg', base64: Buffer.from([0xff, 0xd8, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xd9]).toString('base64') } }, 'INVALID_IMAGE'],
+    ['長辺2048px超過', { ...validRequest, image: { mediaType: 'image/jpeg', base64: oversizedDimensionJpeg } }, 'INVALID_IMAGE'],
+    ['400万画素超過', { ...validRequest, image: { mediaType: 'image/jpeg', base64: oversizedPixelCountJpeg } }, 'INVALID_IMAGE'],
+    ['Base64不正', { ...validRequest, image: { mediaType: 'image/jpeg', base64: 'not+base64$' } }, 'INVALID_IMAGE'],
+    ['mediaType偽装', { ...validRequest, image: { mediaType: 'image/png', base64: jpeg } }, 'INVALID_IMAGE'],
     ['サイズ超過', { ...validRequest, image: { mediaType: 'image/jpeg', base64: Buffer.alloc(3 * 1024 * 1024 + 1, 0xff).toString('base64') } }, 'INVALID_IMAGE'],
   ])('%sをprovider呼出前に拒否する', async (_name, body, code) => {
     const provider: AnalysisProvider = { analyze: jest.fn() };

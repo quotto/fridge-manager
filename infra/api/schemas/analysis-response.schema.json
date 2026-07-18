@@ -6,7 +6,7 @@
       "type": "object", "additionalProperties": false, "required": ["requestId","status","candidates","warnings"],
       "properties": {
         "requestId": { "type": "string", "format": "uuid" }, "status": { "const": "succeeded" },
-        "candidates": { "type": "array", "maxItems": 30, "items": { "$ref": "#/$defs/candidate" } },
+        "candidates": { "type": "array", "maxItems": 30, "items": { "$ref": "food-candidate.schema.json" } },
         "warnings": { "type": "array", "maxItems": 30, "items": { "type": "string", "maxLength": 100 } }
       }
     },
@@ -23,17 +23,5 @@
         }
       }
     }
-  ],
-  "$defs": {
-    "candidate": {
-      "type": "object", "additionalProperties": false, "required": ["name","quantity","unit","evidence","requiresReview"],
-      "properties": {
-        "name": { "type": ["string","null"], "maxLength": 30 },
-        "quantity": { "type": ["string","null"], "pattern": "^(?:(?:0|[1-9][0-9]?)(?:\\.[0-9]{1,2})?|100)$" },
-        "unit": { "type": ["string","null"], "enum": [null,"g","kg","ml","L","個","本","枚","袋","パック","箱","缶","瓶","束","株","玉","丁","尾","切れ","房","合","食"] },
-        "evidence": { "enum": ["VISIBLE_COUNT","PACKAGE_LABEL","VISUAL_ESTIMATE","UNKNOWN"] },
-        "requiresReview": { "type": "boolean" }
-      }
-    }
-  }
+  ]
 }
