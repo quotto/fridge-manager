@@ -1,0 +1,52 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Fridge Manager Analysis API", "version": "1.0.0" },
+  "paths": {
+    "/v1/analysis": {
+      "post": {
+        "summary": "画像から在庫候補を生成する",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnalysisRequest" } } } },
+        "responses": {
+          "200": { "$ref": "#/components/responses/AnalysisResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "403": { "$ref": "#/components/responses/ErrorResponse" },
+          "409": { "$ref": "#/components/responses/ErrorResponse" },
+          "413": { "$ref": "#/components/responses/ErrorResponse" },
+          "415": { "$ref": "#/components/responses/ErrorResponse" },
+          "422": { "$ref": "#/components/responses/ErrorResponse" },
+          "429": { "$ref": "#/components/responses/ErrorResponse" },
+          "500": { "$ref": "#/components/responses/ErrorResponse" },
+          "502": { "$ref": "#/components/responses/ErrorResponse" },
+          "503": { "$ref": "#/components/responses/ErrorResponse" },
+          "504": { "$ref": "#/components/responses/ErrorResponse" }
+        },
+        "x-amazon-apigateway-request-validator": "body-only"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AnalysisRequest": { "$ref": "./schemas/analysis-request.schema.json" },
+      "AnalysisResponse": { "$ref": "./schemas/analysis-response.schema.json" }
+    },
+    "responses": {
+      "AnalysisResponse": { "description": "解析成功", "headers": { "Cache-Control": { "schema": { "type":"string","enum":["no-store"] } }, "X-Request-Id": { "schema": { "type":"string","format":"uuid" } } }, "content": { "application/json": { "schema": { "$ref":"#/components/schemas/AnalysisResponse" } } } },
+      "ErrorResponse": { "description": "構造化エラー", "headers": { "Cache-Control": { "schema": { "type":"string","enum":["no-store"] } }, "X-Request-Id": { "schema": { "type":"string","format":"uuid" } } }, "content": { "application/json": { "schema": { "$ref":"#/components/schemas/AnalysisResponse" } } } }
+    }
+  },
+  "x-amazon-apigateway-request-validators": { "body-only": { "validateRequestBody": true, "validateRequestParameters": true } },
+  "x-amazon-apigateway-gateway-responses": {
+    "BAD_REQUEST_BODY": { "statusCode": "400", "responseParameters": { "gatewayresponse.header.Cache-Control": "'no-store'", "gatewayresponse.header.Content-Type": "'application/json'" }, "responseTemplates": { "application/json": "{\"requestId\":\"$context.requestId\",\"status\":\"failed\",\"error\":{\"code\":\"INVALID_REQUEST\",\"retryable\":false}}" } },
+    "BAD_REQUEST_PARAMETERS": { "statusCode": "400", "responseParameters": { "gatewayresponse.header.Cache-Control": "'no-store'", "gatewayresponse.header.Content-Type": "'application/json'" }, "responseTemplates": { "application/json": "{\"requestId\":\"$context.requestId\",\"status\":\"failed\",\"error\":{\"code\":\"INVALID_REQUEST\",\"retryable\":false}}" } },
+    "UNAUTHORIZED": { "statusCode": "401", "responseParameters": { "gatewayresponse.header.Cache-Control": "'no-store'", "gatewayresponse.header.Content-Type": "'application/json'" }, "responseTemplates": { "application/json": "{\"requestId\":\"$context.requestId\",\"status\":\"failed\",\"error\":{\"code\":\"UNAUTHORIZED\",\"retryable\":false}}" } },
+    "ACCESS_DENIED": { "statusCode": "403", "responseParameters": { "gatewayresponse.header.Cache-Control": "'no-store'", "gatewayresponse.header.Content-Type": "'application/json'" }, "responseTemplates": { "application/json": "{\"requestId\":\"$context.requestId\",\"status\":\"failed\",\"error\":{\"code\":\"UNAUTHORIZED\",\"retryable\":false}}" } },
+    "REQUEST_TOO_LARGE": { "statusCode": "413", "responseParameters": { "gatewayresponse.header.Cache-Control": "'no-store'", "gatewayresponse.header.Content-Type": "'application/json'" }, "responseTemplates": { "application/json": "{\"requestId\":\"$context.requestId\",\"status\":\"failed\",\"error\":{\"code\":\"INVALID_IMAGE\",\"retryable\":false}}" } },
+    "UNSUPPORTED_MEDIA_TYPE": { "statusCode": "415", "responseParameters": { "gatewayresponse.header.Cache-Control": "'no-store'", "gatewayresponse.header.Content-Type": "'application/json'" }, "responseTemplates": { "application/json": "{\"requestId\":\"$context.requestId\",\"status\":\"failed\",\"error\":{\"code\":\"INVALID_REQUEST\",\"retryable\":false}}" } },
+    "THROTTLED": { "statusCode": "429", "responseParameters": { "gatewayresponse.header.Cache-Control": "'no-store'", "gatewayresponse.header.Content-Type": "'application/json'" }, "responseTemplates": { "application/json": "{\"requestId\":\"$context.requestId\",\"status\":\"failed\",\"error\":{\"code\":\"QUOTA_EXCEEDED\",\"retryable\":true}}" } },
+    "QUOTA_EXCEEDED": { "statusCode": "429", "responseParameters": { "gatewayresponse.header.Cache-Control": "'no-store'", "gatewayresponse.header.Content-Type": "'application/json'" }, "responseTemplates": { "application/json": "{\"requestId\":\"$context.requestId\",\"status\":\"failed\",\"error\":{\"code\":\"QUOTA_EXCEEDED\",\"retryable\":true}}" } },
+    "INTEGRATION_FAILURE": { "statusCode": "502", "responseParameters": { "gatewayresponse.header.Cache-Control": "'no-store'", "gatewayresponse.header.Content-Type": "'application/json'" }, "responseTemplates": { "application/json": "{\"requestId\":\"$context.requestId\",\"status\":\"failed\",\"error\":{\"code\":\"PROVIDER_UNAVAILABLE\",\"retryable\":true}}" } },
+    "INTEGRATION_TIMEOUT": { "statusCode": "504", "responseParameters": { "gatewayresponse.header.Cache-Control": "'no-store'", "gatewayresponse.header.Content-Type": "'application/json'" }, "responseTemplates": { "application/json": "{\"requestId\":\"$context.requestId\",\"status\":\"failed\",\"error\":{\"code\":\"TIMEOUT\",\"retryable\":true}}" } },
+    "DEFAULT_5XX": { "statusCode": "500", "responseParameters": { "gatewayresponse.header.Cache-Control": "'no-store'", "gatewayresponse.header.Content-Type": "'application/json'" }, "responseTemplates": { "application/json": "{\"requestId\":\"$context.requestId\",\"status\":\"failed\",\"error\":{\"code\":\"INTERNAL_ERROR\",\"retryable\":true}}" } }
+  }
+}
