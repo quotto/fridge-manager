@@ -12,7 +12,7 @@ describe('AnalysisApiStack', () => {
     template.hasResourceProperties('AWS::ApiGateway::RestApi', { Body: Match.objectLike({
       paths: Match.objectLike({ '/v1/analysis': Match.objectLike({ post: Match.anyValue() }) }),
     }) });
-    template.resourceCountIs('AWS::Lambda::Function', 2);
+    template.resourceCountIs('AWS::Lambda::Function', 4);
     const rendered = JSON.stringify(template.toJSON());
     expect(rendered).toContain('4194304');
     expect(rendered).toContain('additionalProperties');
@@ -54,5 +54,31 @@ describe('AnalysisApiStack', () => {
   it('Lambdaを58秒、Regional REST統合を60秒にする', () => {
     template.hasResourceProperties('AWS::Lambda::Function', { Timeout: 58, ReservedConcurrentExecutions: 5 });
     expect(JSON.stringify(template.toJSON())).toContain('60000');
+  });
+
+  it('全体8000回、WAF 10回/分、50 USD予算と50/80/100通知を構成する', () => {
+    expect(template.toJSON().Parameters).toMatchObject({ GlobalQuotaLimit: { Default: 8000 }, AnomalyThresholdUsd: { Default: 5 } });
+    template.hasResourceProperties('AWS::WAFv2::WebACL', { Scope: 'REGIONAL', Rules: [Match.objectLike({ Statement: { RateBasedStatement: Match.objectLike({ Limit: 10, EvaluationWindowSec: 60, AggregateKeyType: 'IP' }) }, VisibilityConfig: Match.objectLike({ SampledRequestsEnabled: false }) })] });
+    template.hasResourceProperties('AWS::Budgets::Budget', { Budget: { BudgetLimit: { Amount: 50, Unit: 'USD' }, TimeUnit: 'MONTHLY' } });
+    const rendered = JSON.stringify(template.toJSON());
+    for (const threshold of [50, 80, 100]) expect(rendered).toContain(`"Threshold":${threshold}`);
+    expect(rendered).toContain('AWS::CE::AnomalySubscription');
+    expect(rendered).toContain('CONTROL#AI');
+    expect(rendered).toContain('budgets.amazonaws.com');
+    expect(rendered).toContain('costalerts.amazonaws.com');
+    expect(rendered).toContain('AWS:SourceAccount');
+    expect(rendered).toContain('AWS:SourceArn');
+    expect(rendered).toContain('BudgetStopDlq');
+  });
+
+  it('解析・制御LambdaのDynamoDB権限を実使用APIへ限定する', () => {
+    const policies = template.findResources('AWS::IAM::Policy');
+    const rendered = JSON.stringify(policies);
+    for (const action of ['dynamodb:GetItem', 'dynamodb:BatchGetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:TransactWriteItems']) {
+      expect(rendered).toContain(action);
+    }
+    expect(rendered).not.toContain('dynamodb:Scan');
+    expect(rendered).not.toContain('dynamodb:Query');
+    expect(rendered).not.toContain('dynamodb:BatchWriteItem');
   });
 });

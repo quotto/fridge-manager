@@ -1,6 +1,7 @@
-export type QuotaLimitType = 'SHORT' | 'DAILY' | 'MONTHLY';
+export type QuotaLimitType = 'SHORT' | 'DAILY' | 'MONTHLY' | 'GLOBAL' | 'BUDGET';
 export type QuotaReservation = { readonly kind: 'reserved'; readonly reservationKey: string } |
-  { readonly kind: 'exceeded'; readonly limitType: QuotaLimitType; readonly retryAt: string };
+  { readonly kind: 'exceeded'; readonly limitType: QuotaLimitType; readonly retryAt: string } |
+  { readonly kind: 'stopped' };
 
 export interface QuotaStore {
   reserve(userHash: string, requestId: string): Promise<QuotaReservation>;
