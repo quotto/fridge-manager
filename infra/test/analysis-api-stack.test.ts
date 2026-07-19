@@ -81,4 +81,18 @@ describe('AnalysisApiStack', () => {
     expect(rendered).not.toContain('dynamodb:Query');
     expect(rendered).not.toContain('dynamodb:BatchWriteItem');
   });
+
+  it('Budget通知SNSと停止DLQをローテーション有効な用途別CMKで暗号化する', () => {
+    template.resourceCountIs('AWS::KMS::Key', 2);
+    template.allResourcesProperties('AWS::KMS::Key', { EnableKeyRotation: true });
+    const topics = template.findResources('AWS::SNS::Topic');
+    expect(Object.values(topics)).toHaveLength(2);
+    for (const topic of Object.values(topics)) expect(topic.Properties).toHaveProperty('KmsMasterKeyId');
+    template.hasResourceProperties('AWS::SQS::Queue', { KmsMasterKeyId: Match.anyValue(), MessageRetentionPeriod: 1209600 });
+    const rendered = JSON.stringify(template.toJSON());
+    expect(rendered).not.toContain('alias/aws/sqs');
+    for (const principal of ['budgets.amazonaws.com', 'costalerts.amazonaws.com', 'sns.amazonaws.com']) expect(rendered).toContain(principal);
+    expect(rendered).toContain('kms:GenerateDataKey*');
+    expect(rendered).toContain('aws:SourceAccount');
+  });
 });

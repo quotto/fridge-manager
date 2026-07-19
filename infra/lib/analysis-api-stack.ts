@@ -13,6 +13,7 @@ import * as cr from 'aws-cdk-lib/custom-resources';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
+import * as kms from 'aws-cdk-lib/aws-kms';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Construct } from 'constructs';
@@ -119,9 +120,27 @@ export class AnalysisApiStack extends Stack {
       bundling: { minify: true, sourceMap: true },
     });
     controlFn.addToRolePolicy(new iam.PolicyStatement({ actions: ['dynamodb:TransactWriteItems'], resources: [controlTable.tableArn] }));
-    const alertTopic = new sns.Topic(this, 'BudgetAlerts');
-    const stopTopic = new sns.Topic(this, 'BudgetStop');
-    const stopDlq = new sqs.Queue(this, 'BudgetStopDlq', { encryption: sqs.QueueEncryption.KMS_MANAGED, retentionPeriod: Duration.days(14) });
+    const notificationKey = new kms.Key(this, 'BudgetNotificationKey', {
+      enableKeyRotation: true, removalPolicy: props.config.removalPolicy, alias: `alias/fridge-manager-${props.config.environment}-budget-notifications`,
+    });
+    notificationKey.addToResourcePolicy(new iam.PolicyStatement({
+      principals: [new iam.ServicePrincipal('budgets.amazonaws.com')], actions: ['kms:Decrypt', 'kms:GenerateDataKey*', 'kms:DescribeKey'], resources: ['*'],
+      conditions: { StringEquals: { 'aws:SourceAccount': this.account }, ArnLike: { 'aws:SourceArn': `arn:${this.partition}:budgets::${this.account}:*` } },
+    }));
+    notificationKey.addToResourcePolicy(new iam.PolicyStatement({
+      principals: [new iam.ServicePrincipal('costalerts.amazonaws.com')], actions: ['kms:Decrypt', 'kms:GenerateDataKey*', 'kms:DescribeKey'], resources: ['*'],
+      conditions: { StringEquals: { 'aws:SourceAccount': this.account } },
+    }));
+    const dlqKey = new kms.Key(this, 'BudgetStopDlqKey', {
+      enableKeyRotation: true, removalPolicy: props.config.removalPolicy, alias: `alias/fridge-manager-${props.config.environment}-budget-stop-dlq`,
+    });
+    const alertTopic = new sns.Topic(this, 'BudgetAlerts', { masterKey: notificationKey });
+    const stopTopic = new sns.Topic(this, 'BudgetStop', { masterKey: notificationKey });
+    dlqKey.addToResourcePolicy(new iam.PolicyStatement({
+      principals: [new iam.ServicePrincipal('sns.amazonaws.com')], actions: ['kms:Decrypt', 'kms:GenerateDataKey*', 'kms:DescribeKey'], resources: ['*'],
+      conditions: { StringEquals: { 'aws:SourceAccount': this.account }, ArnLike: { 'aws:SourceArn': stopTopic.topicArn } },
+    }));
+    const stopDlq = new sqs.Queue(this, 'BudgetStopDlq', { encryption: sqs.QueueEncryption.KMS, encryptionMasterKey: dlqKey, retentionPeriod: Duration.days(14) });
     alertTopic.addSubscription(new subscriptions.EmailSubscription(budgetNotificationEmail.valueAsString));
     stopTopic.addSubscription(new subscriptions.EmailSubscription(budgetNotificationEmail.valueAsString));
     stopTopic.addSubscription(new subscriptions.LambdaSubscription(controlFn, { deadLetterQueue: stopDlq }));
