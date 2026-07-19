@@ -37,6 +37,8 @@ describe('AI解析API契約', () => {
     for (const code of ['TIMEOUT', 'PROVIDER_UNAVAILABLE', 'QUOTA_EXCEEDED', 'INVALID_IMAGE', 'UNANALYZABLE_IMAGE', 'INTERNAL_ERROR']) {
       expect(serialized).toContain(code);
     }
+    expect(serialized).toContain('"quotaType"');
+    for (const type of ['SHORT', 'DAILY', 'MONTHLY']) expect(serialized).toContain(type);
   });
 
   it('食材候補schemaを正本として追加プロパティ、数量、単位、不明値を制約する', () => {

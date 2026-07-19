@@ -42,6 +42,15 @@ describe('AnalysisApiStack', () => {
     });
   });
 
+  it('ユーザー別クォータ既定値2/分・5/日・30/月をデプロイ時に変更できる', () => {
+    expect(template.toJSON().Parameters).toMatchObject({
+      ShortQuotaLimit: { Default: 2, MinValue: 1 }, DailyQuotaLimit: { Default: 5, MinValue: 1 }, MonthlyQuotaLimit: { Default: 30, MinValue: 1 },
+    });
+    template.hasResourceProperties('AWS::Lambda::Function', { Environment: { Variables: Match.objectLike({
+      QUOTA_SHORT_LIMIT: { Ref: 'ShortQuotaLimit' }, QUOTA_DAILY_LIMIT: { Ref: 'DailyQuotaLimit' }, QUOTA_MONTHLY_LIMIT: { Ref: 'MonthlyQuotaLimit' },
+    }) } });
+  });
+
   it('Lambdaを58秒、Regional REST統合を60秒にする', () => {
     template.hasResourceProperties('AWS::Lambda::Function', { Timeout: 58, ReservedConcurrentExecutions: 5 });
     expect(JSON.stringify(template.toJSON())).toContain('60000');

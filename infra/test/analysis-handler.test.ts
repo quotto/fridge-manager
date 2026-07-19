@@ -8,6 +8,7 @@ import {
   IdempotencyStore,
   createAnalysisHandler,
 } from '../lambda/analysis-handler';
+import { QuotaStore } from '../lambda/quota-store';
 
 class MemoryStore implements IdempotencyStore {
   private readonly records = new Map<string, { hash: string; status: 'IN_PROGRESS' | 'COMPLETED' }>();
@@ -28,6 +29,12 @@ class MemoryStore implements IdempotencyStore {
     if (record?.hash === hash && record.status === 'IN_PROGRESS') this.records.delete(key);
   }
 }
+
+const quotaStore: QuotaStore = {
+  reserve: async (_userHash, requestId) => ({ kind: 'reserved', reservationKey: `quota#${requestId}` }),
+  succeed: async () => undefined,
+  release: async () => undefined,
+};
 
 function event(body: unknown, overrides: Partial<APIGatewayProxyEventV2> = {}): APIGatewayProxyEventV2 {
   return {
@@ -62,7 +69,7 @@ describe('AI解析Lambda', () => {
     const provider: AnalysisProvider = { analyze: jest.fn().mockResolvedValue({
       requestId: validRequest.requestId, status: 'succeeded', candidates: [], warnings: [],
     }) };
-    const handler = createAnalysisHandler({ provider, idempotencyStore: new MemoryStore() });
+    const handler = createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore });
 
     const response = await handler(event({ ...validRequest, mode, ...(mode === 'update' ? { currentItems: [{ name: '牛乳', quantity: '1', unit: '本' }] } : {}) }));
 
@@ -75,7 +82,7 @@ describe('AI解析Lambda', () => {
     const provider: AnalysisProvider = { analyze: jest.fn().mockResolvedValue({
       requestId: validRequest.requestId, status: 'succeeded', candidates: [], warnings: [],
     }) };
-    const handler = createAnalysisHandler({ provider, idempotencyStore: new MemoryStore() });
+    const handler = createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore });
 
     const first = await handler(event(validRequest));
     const retry = await handler(event(validRequest));
@@ -89,7 +96,7 @@ describe('AI解析Lambda', () => {
   it('同一requestIdの並行呼出しを一方だけproviderへ到達させる', async () => {
     let resolveProvider!: (result: AnalysisProviderResult) => void;
     const provider: AnalysisProvider = { analyze: jest.fn().mockReturnValue(new Promise((resolve) => { resolveProvider = resolve; })) };
-    const handler = createAnalysisHandler({ provider, idempotencyStore: new MemoryStore() });
+    const handler = createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore });
     const first = handler(event(validRequest));
     const second = await handler(event(validRequest));
     resolveProvider({ requestId: validRequest.requestId, status: 'succeeded', candidates: [], warnings: [] });
@@ -102,7 +109,7 @@ describe('AI解析Lambda', () => {
     const provider: AnalysisProvider = { analyze: jest.fn().mockResolvedValue({
       requestId: validRequest.requestId, status: 'succeeded', candidates: [], warnings: [],
     }) };
-    const handler = createAnalysisHandler({ provider, idempotencyStore: new MemoryStore() });
+    const handler = createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore });
     await handler(event(validRequest));
 
     const response = await handler(event({ ...validRequest, mode: 'update', currentItems: [{ name: '牛乳', quantity: '1', unit: '本' }] }));
@@ -114,7 +121,7 @@ describe('AI解析Lambda', () => {
 
   it('認証検証済みcontextがない場合はdeny-by-defaultで拒否する', async () => {
     const provider: AnalysisProvider = { analyze: jest.fn() };
-    const response = await createAnalysisHandler({ provider, idempotencyStore: new MemoryStore() })(
+    const response = await createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore })(
       event(validRequest, { requestContext: {} as never }),
     );
     expect(response.statusCode).toBe(401);
@@ -130,7 +137,7 @@ describe('AI解析Lambda', () => {
     [new Error('secret provider detail'), 500, 'INTERNAL_ERROR'],
   ])('障害を構造化エラーへ分類する', async (error, statusCode, code) => {
     const provider: AnalysisProvider = { analyze: jest.fn().mockRejectedValue(error) };
-    const response = await createAnalysisHandler({ provider, idempotencyStore: new MemoryStore() })(event(validRequest));
+    const response = await createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore })(event(validRequest));
     const body = JSON.parse(response.body ?? '{}');
 
     expect(response.statusCode).toBe(statusCode);
@@ -151,7 +158,7 @@ describe('AI解析Lambda', () => {
     ['サイズ超過', { ...validRequest, image: { mediaType: 'image/jpeg', base64: Buffer.alloc(3 * 1024 * 1024 + 1, 0xff).toString('base64') } }, 'INVALID_IMAGE'],
   ])('%sをprovider呼出前に拒否する', async (_name, body, code) => {
     const provider: AnalysisProvider = { analyze: jest.fn() };
-    const handler = createAnalysisHandler({ provider, idempotencyStore: new MemoryStore() });
+    const handler = createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore });
     const response = await handler(typeof body === 'string' ? event({}, { body }) : event(body));
 
     expect(response.statusCode).toBe(400);
@@ -161,7 +168,7 @@ describe('AI解析Lambda', () => {
 
   it('100を超える10進数量を拒否する', async () => {
     const provider: AnalysisProvider = { analyze: jest.fn() };
-    const response = await createAnalysisHandler({ provider, idempotencyStore: new MemoryStore() })(event({
+    const response = await createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore })(event({
       ...validRequest, mode: 'update', currentItems: [{ name: '牛乳', quantity: '100.01', unit: '本' }],
     }));
     expect(response.statusCode).toBe(400);
@@ -172,7 +179,7 @@ describe('AI解析Lambda', () => {
     const provider: AnalysisProvider = { analyze: jest.fn()
       .mockRejectedValueOnce(new AnalysisError('PROVIDER_UNAVAILABLE', 503))
       .mockResolvedValueOnce({ requestId: validRequest.requestId, status: 'succeeded', candidates: [], warnings: [] }) };
-    const handler = createAnalysisHandler({ provider, idempotencyStore: new MemoryStore() });
+    const handler = createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore });
     expect((await handler(event(validRequest))).statusCode).toBe(503);
     expect((await handler(event(validRequest))).statusCode).toBe(200);
     expect(provider.analyze).toHaveBeenCalledTimes(2);
@@ -180,7 +187,7 @@ describe('AI解析Lambda', () => {
 
   it('application/json以外のContent-Typeを拒否する', async () => {
     const provider: AnalysisProvider = { analyze: jest.fn() };
-    const response = await createAnalysisHandler({ provider, idempotencyStore: new MemoryStore() })(
+    const response = await createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore })(
       event(validRequest, { headers: { 'content-type': 'text/plain' } }),
     );
     expect(response.statusCode).toBe(415);
@@ -191,8 +198,54 @@ describe('AI解析Lambda', () => {
     const provider: AnalysisProvider = { analyze: jest.fn().mockResolvedValue({
       requestId: '550e8400-e29b-41d4-a716-446655440000', status: 'succeeded', candidates: [], warnings: [],
     }) };
-    const response = await createAnalysisHandler({ provider, idempotencyStore: new MemoryStore() })(event(validRequest));
+    const response = await createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore })(event(validRequest));
     expect(response.statusCode).toBe(422);
     expect(JSON.parse(response.body ?? '{}').error.code).toBe('UNANALYZABLE_IMAGE');
+  });
+
+  it('日次上限時は種別とretryAtを返しproviderを呼ばない', async () => {
+    const provider: AnalysisProvider = { analyze: jest.fn() };
+    const limited: QuotaStore = {
+      reserve: jest.fn().mockResolvedValue({ kind: 'exceeded', limitType: 'DAILY', retryAt: '2026-07-20T15:00:00.000Z' }),
+      succeed: jest.fn(), release: jest.fn(),
+    };
+    const response = await createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore: limited })(event(validRequest));
+    expect(response.statusCode).toBe(429);
+    expect(JSON.parse(response.body ?? '{}')).toMatchObject({ error: { code: 'QUOTA_EXCEEDED', quotaType: 'DAILY', retryAt: '2026-07-20T15:00:00.000Z' } });
+    expect(provider.analyze).not.toHaveBeenCalled();
+  });
+
+  it('quota store障害は503でfail-closedにしproviderを呼ばない', async () => {
+    const provider: AnalysisProvider = { analyze: jest.fn() };
+    const unavailable: QuotaStore = { reserve: jest.fn().mockRejectedValue(new Error('dynamo')), succeed: jest.fn(), release: jest.fn() };
+    const response = await createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore: unavailable })(event(validRequest));
+    expect(response.statusCode).toBe(503);
+    expect(JSON.parse(response.body ?? '{}').error.code).toBe('QUOTA_UNAVAILABLE');
+    expect(provider.analyze).not.toHaveBeenCalled();
+  });
+
+  it('AI基盤障害時だけ予約を一度返却する', async () => {
+    const provider: AnalysisProvider = { analyze: jest.fn().mockRejectedValue(new AnalysisError('PROVIDER_UNAVAILABLE', 503)) };
+    const reserved: QuotaStore = { reserve: jest.fn().mockResolvedValue({ kind: 'reserved', reservationKey: 'reservation' }), succeed: jest.fn(), release: jest.fn() };
+    const response = await createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore: reserved })(event(validRequest));
+    expect(response.statusCode).toBe(503);
+    expect(reserved.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('有効なAI結果後のquota完了障害では返却せず再送もproviderへ進めない', async () => {
+    const provider: AnalysisProvider = { analyze: jest.fn().mockResolvedValue({ requestId: validRequest.requestId, status: 'succeeded', candidates: [], warnings: [] }) };
+    const reserved: QuotaStore = { reserve: jest.fn().mockResolvedValue({ kind: 'reserved', reservationKey: 'reservation' }), succeed: jest.fn().mockRejectedValue(new Error('dynamo')), release: jest.fn() };
+    const handler = createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore: reserved });
+    expect((await handler(event(validRequest))).statusCode).toBe(500);
+    expect((await handler(event(validRequest))).statusCode).toBe(409);
+    expect(provider.analyze).toHaveBeenCalledTimes(1);
+    expect(reserved.release).not.toHaveBeenCalled();
+  });
+
+  it('入力不正はquotaへ到達せず非計上にする', async () => {
+    const provider: AnalysisProvider = { analyze: jest.fn() };
+    const untouched: QuotaStore = { reserve: jest.fn(), succeed: jest.fn(), release: jest.fn() };
+    await createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore: untouched })(event({ ...validRequest, requestId: 'bad' }));
+    expect(untouched.reserve).not.toHaveBeenCalled();
   });
 });
