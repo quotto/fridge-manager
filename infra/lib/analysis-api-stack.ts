@@ -14,6 +14,7 @@ import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as kms from 'aws-cdk-lib/aws-kms';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Construct } from 'constructs';
@@ -82,7 +83,27 @@ export class AnalysisApiStack extends Stack {
     const globalQuotaLimit = new CfnParameter(this, 'GlobalQuotaLimit', { type: 'Number', default: 8000, minValue: 1 });
     const budgetNotificationEmail = new CfnParameter(this, 'BudgetNotificationEmail', { type: 'String', allowedPattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$' });
     const anomalyThresholdUsd = new CfnParameter(this, 'AnomalyThresholdUsd', { type: 'Number', default: 5, minValue: 1 });
+    const logKey = new kms.Key(this, 'ApplicationLogKey', {
+      enableKeyRotation: true, removalPolicy: props.config.removalPolicy, alias: `alias/fridge-manager-${props.config.environment}-logs`,
+    });
+    logKey.addToResourcePolicy(new iam.PolicyStatement({
+      principals: [new iam.ServicePrincipal(`logs.${this.region}.amazonaws.com`)], actions: ['kms:Encrypt*', 'kms:Decrypt*', 'kms:ReEncrypt*', 'kms:GenerateDataKey*', 'kms:Describe*'], resources: ['*'],
+      conditions: { ArnLike: { 'kms:EncryptionContext:aws:logs:arn': `arn:${this.partition}:logs:${this.region}:${this.account}:log-group:/aws/lambda/fridge-manager-${props.config.environment}-*` } },
+    }));
+    const applicationLogGroup = (name: string) => new logs.LogGroup(this, `${name}Logs`, {
+      logGroupName: `/aws/lambda/fridge-manager-${props.config.environment}-${name.toLowerCase()}`,
+      encryptionKey: logKey, retention: props.config.logRetention, removalPolicy: props.config.removalPolicy,
+    });
+    const authorizerLogGroup = applicationLogGroup('Authorizer');
+    const analysisLogGroup = applicationLogGroup('Analysis');
+    const controlLogGroup = applicationLogGroup('Control');
+    const lambdaRole = (name: string, logGroup: logs.ILogGroup) => {
+      const role = new iam.Role(this, `${name}Role`, { assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com') });
+      role.addToPolicy(new iam.PolicyStatement({ actions: ['logs:CreateLogStream', 'logs:PutLogEvents'], resources: [`${logGroup.logGroupArn}:*`] }));
+      return role;
+    };
     const authorizerFn = new nodejs.NodejsFunction(this, 'FirebaseAuthorizer', {
+      functionName: `fridge-manager-${props.config.environment}-authorizer`, logGroup: authorizerLogGroup, role: lambdaRole('Authorizer', authorizerLogGroup),
       entry: resolve('infra/lambda/firebase-authorizer-index.ts'), handler: 'main', runtime: lambda.Runtime.NODEJS_22_X,
       timeout: Duration.seconds(10), memorySize: 256,
       environment: {
@@ -95,6 +116,7 @@ export class AnalysisApiStack extends Stack {
       bundling: { minify: true, sourceMap: true },
     });
     const fn = new nodejs.NodejsFunction(this, 'AnalysisHandler', {
+      functionName: `fridge-manager-${props.config.environment}-analysis`, logGroup: analysisLogGroup, role: lambdaRole('Analysis', analysisLogGroup),
       entry: resolve('infra/lambda/index.ts'), handler: 'main', runtime: lambda.Runtime.NODEJS_22_X,
       timeout: Duration.seconds(58), memorySize: 1024,
       reservedConcurrentExecutions: 5,
@@ -105,6 +127,7 @@ export class AnalysisApiStack extends Stack {
         QUOTA_MONTHLY_LIMIT: monthlyQuotaLimit.valueAsString,
         QUOTA_GLOBAL_LIMIT: globalQuotaLimit.valueAsString,
         CONTROL_TABLE_NAME: controlTable.tableName,
+        ENVIRONMENT: props.config.environment,
       },
       bundling: { minify: true, sourceMap: true },
     });
@@ -115,6 +138,7 @@ export class AnalysisApiStack extends Stack {
     fn.addToRolePolicy(new iam.PolicyStatement({ actions: ['dynamodb:GetItem'], resources: [controlTable.tableArn] }));
 
     const controlFn = new nodejs.NodejsFunction(this, 'AiControlHandler', {
+      functionName: `fridge-manager-${props.config.environment}-control`, logGroup: controlLogGroup, role: lambdaRole('Control', controlLogGroup),
       entry: resolve('infra/lambda/ai-control-index.ts'), handler: 'main', runtime: lambda.Runtime.NODEJS_22_X,
       timeout: Duration.seconds(10), memorySize: 256, environment: { CONTROL_TABLE_NAME: controlTable.tableName },
       bundling: { minify: true, sourceMap: true },
@@ -144,10 +168,11 @@ export class AnalysisApiStack extends Stack {
     alertTopic.addSubscription(new subscriptions.EmailSubscription(budgetNotificationEmail.valueAsString));
     stopTopic.addSubscription(new subscriptions.EmailSubscription(budgetNotificationEmail.valueAsString));
     stopTopic.addSubscription(new subscriptions.LambdaSubscription(controlFn, { deadLetterQueue: stopDlq }));
-    new cloudwatch.Alarm(this, 'BudgetStopDlqAlarm', {
+    const budgetStopDlqAlarm = new cloudwatch.Alarm(this, 'BudgetStopDlqAlarm', {
       metric: stopDlq.metricApproximateNumberOfMessagesVisible(), threshold: 1, evaluationPeriods: 1,
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
-    }).addAlarmAction(new cwActions.SnsAction(alertTopic));
+    });
+    budgetStopDlqAlarm.addAlarmAction(new cwActions.SnsAction(alertTopic));
     const budgetPolicyResults = [alertTopic, stopTopic].map((topic) => topic.addToResourcePolicy(new iam.PolicyStatement({
       principals: [new iam.ServicePrincipal('budgets.amazonaws.com')], actions: ['sns:Publish'], resources: [topic.topicArn],
       conditions: { StringEquals: { 'AWS:SourceAccount': this.account }, ArnLike: { 'AWS:SourceArn': `arn:${this.partition}:budgets::${this.account}:*` } },
@@ -171,6 +196,43 @@ export class AnalysisApiStack extends Stack {
       subscribers: [{ type: 'SNS', address: alertTopic.topicArn }], thresholdExpression: JSON.stringify({ And: [{ Dimensions: { Key: 'ANOMALY_TOTAL_IMPACT_ABSOLUTE', MatchOptions: ['GREATER_THAN_OR_EQUAL'], Values: [anomalyThresholdUsd.valueAsString] } }] }),
     });
     if (costPolicyResult.policyDependable) anomalySubscription.node.addDependency(costPolicyResult.policyDependable);
+
+    const metric = (name: string, statistic = 'Sum', dimensionsMap: Record<string, string> = { Environment: props.config.environment }) =>
+      new cloudwatch.Metric({ namespace: 'FridgeManager/Analysis', metricName: name, dimensionsMap, statistic, period: Duration.minutes(5) });
+    const sloEligible = metric('SloEligible'); const sloSuccess = metric('SloSuccess');
+    const availability = new cloudwatch.MathExpression({ expression: 'IF(eligible>0,100*success/eligible,100)', usingMetrics: { success: sloSuccess, eligible: sloEligible }, label: 'Core availability %', period: Duration.minutes(5) });
+    const providerFailures = metric('Requests', 'Sum', { Environment: props.config.environment, Outcome: 'PROVIDER_FAILURE' });
+    const serviceFailures = metric('Requests', 'Sum', { Environment: props.config.environment, Outcome: 'SERVICE_FAILURE' });
+    const quotaRejects = metric('Requests', 'Sum', { Environment: props.config.environment, Outcome: 'QUOTA_REJECT' });
+    const latencyP95 = metric('Latency', 'p95');
+    const coreAlarm = new cloudwatch.Alarm(this, 'CoreAvailabilityAlarm', {
+      metric: availability, threshold: 99, comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+      evaluationPeriods: 12, datapointsToAlarm: 6, treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    const providerAlarm = new cloudwatch.Alarm(this, 'ProviderFailureAlarm', {
+      metric: providerFailures, threshold: 3, evaluationPeriods: 1, treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    const latencyAlarm = new cloudwatch.Alarm(this, 'LatencyP95Alarm', {
+      metric: latencyP95, threshold: 55_000, evaluationPeriods: 3, comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    const lambdaErrorAlarm = new cloudwatch.Alarm(this, 'AnalysisLambdaErrorAlarm', {
+      metric: fn.metricErrors({ period: Duration.minutes(5) }), threshold: 1, evaluationPeriods: 1, treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    const lambdaThrottleAlarm = new cloudwatch.Alarm(this, 'AnalysisLambdaThrottleAlarm', {
+      metric: fn.metricThrottles({ period: Duration.minutes(5) }), threshold: 1, evaluationPeriods: 1, treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    for (const alarm of [coreAlarm, providerAlarm, latencyAlarm, lambdaErrorAlarm, lambdaThrottleAlarm]) alarm.addAlarmAction(new cwActions.SnsAction(alertTopic));
+    const dashboardWidgets = [
+      [new cloudwatch.GraphWidget({ title: '30-day rolling Core SLO 99.0%（暦月とは別）', left: [new cloudwatch.MathExpression({ expression: 'IF(eligible>0,100*success/eligible,100)', usingMetrics: {
+        success: sloSuccess.with({ period: Duration.days(30) }), eligible: sloEligible.with({ period: Duration.days(30) }),
+      }, label: '30-day availability %', period: Duration.days(30) })], leftYAxis: { min: 98, max: 100 } })],
+      [new cloudwatch.GraphWidget({ title: 'Latency p95', left: [latencyP95] }), new cloudwatch.GraphWidget({ title: 'Errors / quota / provider', left: [serviceFailures, providerFailures, quotaRejects] })],
+      [new cloudwatch.GraphWidget({ title: 'AI call usage', left: [metric('ProviderCalls')] }), new cloudwatch.AlarmWidget({ title: 'Cost / stop delivery', alarm: budgetStopDlqAlarm })],
+      [new cloudwatch.GraphWidget({ title: 'Lambda Errors / Throttles', left: [fn.metricErrors(), fn.metricThrottles()] })],
+      [new cloudwatch.TextWidget({ markdown: `## Cost controls / SLO definition\nMonthly Budget: 50 USD (50/80/100%) · Cost Anomaly threshold parameter · Global cap: 8,000/month JST. Dashboard availability is a 30-day rolling indicator; the calendar-month SLO is evaluated separately.`, width: 24, height: 3 })],
+    ] as unknown as cloudwatch.IWidget[][];
+    new cloudwatch.Dashboard(this, 'OperationsDashboard', { dashboardName: `fridge-manager-${props.config.environment}`, widgets: dashboardWidgets });
 
     const specification = JSON.parse(readFileSync(resolve('infra/api/openapi.json'), 'utf8')) as Record<string, unknown>;
     const components = specification.components as { schemas: Record<string, unknown>; securitySchemes?: Record<string, unknown> };
@@ -200,6 +262,16 @@ export class AnalysisApiStack extends Stack {
         stageName: props.config.environment, dataTraceEnabled: false, tracingEnabled: true, throttlingBurstLimit: 2, throttlingRateLimit: 10,
       },
     });
+    const api5xxAlarm = new cloudwatch.Alarm(this, 'AnalysisApi5xxAlarm', {
+      metric: api.metricServerError({ period: Duration.minutes(5), statistic: 'Sum' }), threshold: 1, evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    const authorizerErrorAlarm = new cloudwatch.Alarm(this, 'AuthorizerLambdaErrorAlarm', {
+      metric: authorizerFn.metricErrors({ period: Duration.minutes(5) }), threshold: 1, evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    api5xxAlarm.addAlarmAction(new cwActions.SnsAction(alertTopic));
+    authorizerErrorAlarm.addAlarmAction(new cwActions.SnsAction(alertTopic));
     const webAcl = new wafv2.CfnWebACL(this, 'AnalysisWebAcl', { scope: 'REGIONAL', defaultAction: { allow: {} }, visibilityConfig: {
       cloudWatchMetricsEnabled: true, metricName: `fridge-manager-${props.config.environment}-waf`, sampledRequestsEnabled: false,
     }, rules: [{ name: 'AnalysisIpRateLimit', priority: 0, action: { block: {} }, statement: { rateBasedStatement: {

@@ -8,6 +8,7 @@ import responseSchema from '../api/schemas/analysis-response.schema.json';
 import candidateSchema from '../api/schemas/food-candidate.schema.json';
 import { ValidatedAnalysisResult, validateProviderResult } from './provider-boundary';
 import { QuotaLimitType, QuotaStore } from './quota-store';
+import { AnalysisTelemetry, TelemetryOutcome } from './analysis-telemetry';
 
 export type { AnalysisProviderResult } from './provider-boundary';
 
@@ -127,8 +128,11 @@ function response(statusCode: number, requestId: string | undefined, code?: Erro
   }) };
 }
 
-export function createAnalysisHandler(deps: { readonly provider: AnalysisProvider; readonly idempotencyStore: IdempotencyStore; readonly quotaStore: QuotaStore }) {
+export function createAnalysisHandler(deps: { readonly provider: AnalysisProvider; readonly idempotencyStore: IdempotencyStore; readonly quotaStore: QuotaStore; readonly telemetry?: AnalysisTelemetry; readonly now?: () => number }) {
   return async (event: { readonly body?: string | null; readonly headers: Record<string, string | undefined>; readonly requestContext: { readonly requestId?: string; readonly authorizer?: unknown } }): Promise<APIGatewayProxyStructuredResultV2> => {
+    const startedAt = (deps.now ?? Date.now)();
+    let providerCalled = false;
+    const execute = async (): Promise<APIGatewayProxyStructuredResultV2> => {
     const rawAuthorizer = event.requestContext.authorizer;
     const outer = rawAuthorizer && typeof rawAuthorizer === 'object' ? rawAuthorizer as Record<string, unknown> : undefined;
     const nested = outer?.lambda;
@@ -165,6 +169,7 @@ export function createAnalysisHandler(deps: { readonly provider: AnalysisProvide
         return response(429, request.requestId, 'QUOTA_EXCEEDED', quota.retryAt, undefined, quota.limitType);
       }
       reservationKey = quota.reservationKey;
+      providerCalled = true;
       const rawResult = await deps.provider.analyze(request);
       const result = validateProviderResult(rawResult, request.requestId);
       if (!result || !validateResponseSchema(result)) throw new AnalysisError('UNANALYZABLE_IMAGE', 422);
@@ -185,5 +190,21 @@ export function createAnalysisHandler(deps: { readonly provider: AnalysisProvide
       const typed = error instanceof AnalysisError ? error : new AnalysisError('INTERNAL_ERROR', 500);
       return response(typed.statusCode, request.requestId, typed.code, typed.retryAt, undefined, typed.quotaType);
     }
+    };
+    const result = await execute();
+    if (deps.telemetry) {
+      const body = JSON.parse(result.body ?? '{}') as { error?: { code?: string } };
+      const code = body.error?.code;
+      const statusCode = result.statusCode ?? 500;
+      const outcome: TelemetryOutcome = statusCode === 200 ? 'SUCCESS' : statusCode === 429 ? 'QUOTA_REJECT' :
+        code === 'SERVICE_STOPPED' ? 'SERVICE_STOPPED' : ['TIMEOUT', 'PROVIDER_UNAVAILABLE', 'UNANALYZABLE_IMAGE'].includes(code ?? '') ? 'PROVIDER_FAILURE' :
+          statusCode >= 500 ? 'SERVICE_FAILURE' : 'CLIENT_REJECT';
+      try {
+        deps.telemetry.record({ outcome, latencyMs: (deps.now ?? Date.now)() - startedAt, statusCode,
+          ...(code ? { errorCode: code } : {}), ...(result.headers?.['x-request-id'] ? { requestId: String(result.headers['x-request-id']) } : {}),
+          providerCalled, sloEligible: outcome === 'SUCCESS' || outcome === 'SERVICE_FAILURE' });
+      } catch { /* 観測障害でAPI応答を失敗させない。 */ }
+    }
+    return result;
   };
 }
