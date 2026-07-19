@@ -53,6 +53,9 @@ export class AnalysisApiStack extends Stack {
     const firebaseAppIds = new CfnParameter(this, 'FirebaseAppIds', { type: 'String', minLength: 1, allowedPattern: '^[A-Za-z0-9:,_-]+$' });
     const googleWifAudience = new CfnParameter(this, 'GoogleWifAudience', { type: 'String', minLength: 1 });
     const googleServiceAccountEmail = new CfnParameter(this, 'GoogleServiceAccountEmail', { type: 'String', allowedPattern: '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.iam\\.gserviceaccount\\.com$' });
+    const shortQuotaLimit = new CfnParameter(this, 'ShortQuotaLimit', { type: 'Number', default: 2, minValue: 1 });
+    const dailyQuotaLimit = new CfnParameter(this, 'DailyQuotaLimit', { type: 'Number', default: 5, minValue: 1 });
+    const monthlyQuotaLimit = new CfnParameter(this, 'MonthlyQuotaLimit', { type: 'Number', default: 30, minValue: 1 });
     const authorizerFn = new nodejs.NodejsFunction(this, 'FirebaseAuthorizer', {
       entry: resolve('infra/lambda/firebase-authorizer-index.ts'), handler: 'main', runtime: lambda.Runtime.NODEJS_22_X,
       timeout: Duration.seconds(10), memorySize: 256,
@@ -69,7 +72,12 @@ export class AnalysisApiStack extends Stack {
       entry: resolve('infra/lambda/index.ts'), handler: 'main', runtime: lambda.Runtime.NODEJS_22_X,
       timeout: Duration.seconds(58), memorySize: 1024,
       reservedConcurrentExecutions: 5,
-      environment: { IDEMPOTENCY_TABLE_NAME: table.tableName },
+      environment: {
+        IDEMPOTENCY_TABLE_NAME: table.tableName,
+        QUOTA_SHORT_LIMIT: shortQuotaLimit.valueAsString,
+        QUOTA_DAILY_LIMIT: dailyQuotaLimit.valueAsString,
+        QUOTA_MONTHLY_LIMIT: monthlyQuotaLimit.valueAsString,
+      },
       bundling: { minify: true, sourceMap: true },
     });
     table.grantReadWriteData(fn);

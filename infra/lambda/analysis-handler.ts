@@ -7,6 +7,7 @@ import requestSchema from '../api/schemas/analysis-request.schema.json';
 import responseSchema from '../api/schemas/analysis-response.schema.json';
 import candidateSchema from '../api/schemas/food-candidate.schema.json';
 import { ValidatedAnalysisResult, validateProviderResult } from './provider-boundary';
+import { QuotaLimitType, QuotaStore } from './quota-store';
 
 export type { AnalysisProviderResult } from './provider-boundary';
 
@@ -28,10 +29,10 @@ export interface IdempotencyStore {
 
 type ErrorCode = 'INVALID_REQUEST' | 'INVALID_IMAGE' | 'UNAUTHORIZED' | 'DUPLICATE_REQUEST' |
   'IDEMPOTENCY_CONFLICT' | 'TIMEOUT' | 'PROVIDER_UNAVAILABLE' | 'QUOTA_EXCEEDED' |
-  'UNANALYZABLE_IMAGE' | 'INTERNAL_ERROR';
+  'QUOTA_UNAVAILABLE' | 'UNANALYZABLE_IMAGE' | 'INTERNAL_ERROR';
 
 export class AnalysisError extends Error {
-  public constructor(public readonly code: ErrorCode, public readonly statusCode: number, public readonly retryAt?: string) {
+  public constructor(public readonly code: ErrorCode, public readonly statusCode: number, public readonly retryAt?: string, public readonly quotaType?: QuotaLimitType) {
     super(code);
   }
 }
@@ -118,15 +119,15 @@ function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function response(statusCode: number, requestId: string | undefined, code?: ErrorCode, retryAt?: string, result?: ValidatedAnalysisResult): APIGatewayProxyStructuredResultV2 {
+function response(statusCode: number, requestId: string | undefined, code?: ErrorCode, retryAt?: string, result?: ValidatedAnalysisResult, quotaType?: QuotaLimitType): APIGatewayProxyStructuredResultV2 {
   const headers: Record<string, string> = { 'content-type': 'application/json', 'cache-control': 'no-store' };
   if (requestId) headers['x-request-id'] = requestId;
   return { statusCode, headers, body: JSON.stringify(result ?? {
-    ...(requestId ? { requestId } : {}), status: 'failed', error: { code, retryable: statusCode >= 429, ...(retryAt ? { retryAt } : {}) },
+    ...(requestId ? { requestId } : {}), status: 'failed', error: { code, retryable: statusCode >= 429, ...(retryAt ? { retryAt } : {}), ...(quotaType ? { quotaType } : {}) },
   }) };
 }
 
-export function createAnalysisHandler(deps: { readonly provider: AnalysisProvider; readonly idempotencyStore: IdempotencyStore }) {
+export function createAnalysisHandler(deps: { readonly provider: AnalysisProvider; readonly idempotencyStore: IdempotencyStore; readonly quotaStore: QuotaStore }) {
   return async (event: { readonly body?: string | null; readonly headers: Record<string, string | undefined>; readonly requestContext: { readonly requestId?: string; readonly authorizer?: unknown } }): Promise<APIGatewayProxyStructuredResultV2> => {
     const rawAuthorizer = event.requestContext.authorizer;
     const outer = rawAuthorizer && typeof rawAuthorizer === 'object' ? rawAuthorizer as Record<string, unknown> : undefined;
@@ -144,20 +145,40 @@ export function createAnalysisHandler(deps: { readonly provider: AnalysisProvide
     const hash = createHash('sha256').update(canonical(request)).digest('hex');
     const userHash = createHash('sha256').update(auth.userId).digest('hex');
     let claimed = false;
+    let reservationKey: string | undefined;
+    let providerSucceeded = false;
     try {
       const claim = await deps.idempotencyStore.claim(`${userHash}#${request.requestId}`, hash);
       if (claim.kind === 'conflict') return response(409, request.requestId, 'IDEMPOTENCY_CONFLICT');
       if (claim.kind === 'duplicate') return response(409, request.requestId, 'DUPLICATE_REQUEST');
       claimed = true;
+      let quota;
+      try { quota = await deps.quotaStore.reserve(userHash, request.requestId); } catch { throw new AnalysisError('QUOTA_UNAVAILABLE', 503); }
+      if (quota.kind === 'exceeded') {
+        await deps.idempotencyStore.abandon(`${userHash}#${request.requestId}`, hash);
+        claimed = false;
+        return response(429, request.requestId, 'QUOTA_EXCEEDED', quota.retryAt, undefined, quota.limitType);
+      }
+      reservationKey = quota.reservationKey;
       const rawResult = await deps.provider.analyze(request);
       const result = validateProviderResult(rawResult, request.requestId);
       if (!result || !validateResponseSchema(result)) throw new AnalysisError('UNANALYZABLE_IMAGE', 422);
+      providerSucceeded = true;
+      await deps.quotaStore.succeed(reservationKey);
       await deps.idempotencyStore.complete(`${userHash}#${request.requestId}`);
       return response(200, request.requestId, undefined, undefined, result);
     } catch (error) {
-      if (claimed) await deps.idempotencyStore.abandon(`${userHash}#${request.requestId}`, hash).catch(() => undefined);
+      if (claimed && reservationKey && !providerSucceeded) {
+        try {
+          await deps.quotaStore.release(reservationKey);
+          await deps.idempotencyStore.abandon(`${userHash}#${request.requestId}`, hash);
+          claimed = false;
+        } catch { return response(500, request.requestId, 'INTERNAL_ERROR'); }
+      } else if (claimed && !reservationKey && error instanceof AnalysisError && error.code === 'QUOTA_UNAVAILABLE') {
+        await deps.idempotencyStore.abandon(`${userHash}#${request.requestId}`, hash).catch(() => undefined);
+      }
       const typed = error instanceof AnalysisError ? error : new AnalysisError('INTERNAL_ERROR', 500);
-      return response(typed.statusCode, request.requestId, typed.code, typed.retryAt);
+      return response(typed.statusCode, request.requestId, typed.code, typed.retryAt, undefined, typed.quotaType);
     }
   };
 }
