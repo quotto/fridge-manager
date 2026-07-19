@@ -1,0 +1,37 @@
+name: AI Control Drill
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Exercise target
+        required: true
+        type: choice
+        options: [stg, prod]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ai-control-drill-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  drill:
+    name: Stop and recover AI within 5 minutes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: ${{ inputs.target == 'prod' && 'production' || 'staging' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4
+        with:
+          role-to-assume: ${{ vars.AWS_OPERATIONS_ROLE_ARN }}
+          aws-region: ap-northeast-1
+      - name: Exercise stop and recovery
+        run: bash .github/scripts/drill-ai-control.sh "${{ inputs.target }}"

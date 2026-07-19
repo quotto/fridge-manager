@@ -1,0 +1,23 @@
+name: AI Control Change
+on:
+  workflow_dispatch:
+    inputs:
+      target: { description: Target environment, required: true, type: choice, options: [stg, prod] }
+      state: { description: Desired AI state, required: true, type: choice, options: [stopped, enabled] }
+      issue: { description: Tracking issue number, required: true, type: string }
+      reason: { description: Short operational reason without sensitive data, required: true, type: string }
+permissions: { contents: read, id-token: write }
+concurrency: { group: "ai-control-${{ inputs.target }}", cancel-in-progress: false }
+jobs:
+  change:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: ${{ inputs.target == 'prod' && 'production' || 'staging' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { persist-credentials: false }
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4
+        with: { role-to-assume: "${{ vars.AWS_OPERATIONS_ROLE_ARN }}", aws-region: ap-northeast-1 }
+      - name: Apply and verify audited state
+        env: { CONTROL_REASON: "${{ inputs.reason }}", CONTROL_ISSUE: "${{ inputs.issue }}" }
+        run: bash .github/scripts/set-ai-control.sh "${{ inputs.target }}" "${{ inputs.state }}"

@@ -1,0 +1,7 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Isolated rollback drill; WaitCondition intentionally receives no signal.
+Resources:
+  Handle: { Type: AWS::CloudFormation::WaitConditionHandle }
+  ExpectedFailure:
+    Type: AWS::CloudFormation::WaitCondition
+    Properties: { Handle: !Ref Handle, Timeout: '10', Count: 1 }
