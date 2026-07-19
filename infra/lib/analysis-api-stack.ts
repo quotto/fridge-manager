@@ -4,6 +4,16 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as budgets from 'aws-cdk-lib/aws-budgets';
+import * as ce from 'aws-cdk-lib/aws-ce';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
+import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
+import * as cr from 'aws-cdk-lib/custom-resources';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
+import * as kms from 'aws-cdk-lib/aws-kms';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Construct } from 'constructs';
@@ -48,6 +58,19 @@ export class AnalysisApiStack extends Stack {
       timeToLiveAttribute: 'expiresAt', encryption: dynamodb.TableEncryption.AWS_MANAGED,
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, removalPolicy: props.config.removalPolicy,
     });
+    const controlTable = new dynamodb.Table(this, 'AiControl', {
+      partitionKey: { name: 'controlId', type: dynamodb.AttributeType.STRING }, timeToLiveAttribute: 'expiresAt',
+      encryption: dynamodb.TableEncryption.AWS_MANAGED, billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: props.config.removalPolicy,
+    });
+    const bootstrap = new cr.AwsCustomResource(this, 'AiControlBootstrap', {
+      installLatestAwsSdk: false,
+      onCreate: { service: 'DynamoDB', action: 'putItem', parameters: { TableName: controlTable.tableName, Item: {
+        controlId: { S: 'CONTROL#AI' }, enabled: { BOOL: true }, actor: { S: 'cloudformation' }, reason: { S: 'INITIAL_ENABLE' }, updatedAt: { S: new Date(0).toISOString() },
+      }, ConditionExpression: 'attribute_not_exists(controlId)' }, physicalResourceId: cr.PhysicalResourceId.of('ai-control-bootstrap-v1') },
+      policy: cr.AwsCustomResourcePolicy.fromSdkCalls({ resources: [controlTable.tableArn] }),
+    });
+    bootstrap.node.addDependency(controlTable);
     const firebaseProjectId = new CfnParameter(this, 'FirebaseProjectId', { type: 'String', allowedPattern: '^[a-z][a-z0-9-]{4,28}[a-z0-9]$' });
     const firebaseProjectNumber = new CfnParameter(this, 'FirebaseProjectNumber', { type: 'String', allowedPattern: '^[1-9][0-9]{5,19}$' });
     const firebaseAppIds = new CfnParameter(this, 'FirebaseAppIds', { type: 'String', minLength: 1, allowedPattern: '^[A-Za-z0-9:,_-]+$' });
@@ -56,6 +79,9 @@ export class AnalysisApiStack extends Stack {
     const shortQuotaLimit = new CfnParameter(this, 'ShortQuotaLimit', { type: 'Number', default: 2, minValue: 1 });
     const dailyQuotaLimit = new CfnParameter(this, 'DailyQuotaLimit', { type: 'Number', default: 5, minValue: 1 });
     const monthlyQuotaLimit = new CfnParameter(this, 'MonthlyQuotaLimit', { type: 'Number', default: 30, minValue: 1 });
+    const globalQuotaLimit = new CfnParameter(this, 'GlobalQuotaLimit', { type: 'Number', default: 8000, minValue: 1 });
+    const budgetNotificationEmail = new CfnParameter(this, 'BudgetNotificationEmail', { type: 'String', allowedPattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$' });
+    const anomalyThresholdUsd = new CfnParameter(this, 'AnomalyThresholdUsd', { type: 'Number', default: 5, minValue: 1 });
     const authorizerFn = new nodejs.NodejsFunction(this, 'FirebaseAuthorizer', {
       entry: resolve('infra/lambda/firebase-authorizer-index.ts'), handler: 'main', runtime: lambda.Runtime.NODEJS_22_X,
       timeout: Duration.seconds(10), memorySize: 256,
@@ -77,10 +103,74 @@ export class AnalysisApiStack extends Stack {
         QUOTA_SHORT_LIMIT: shortQuotaLimit.valueAsString,
         QUOTA_DAILY_LIMIT: dailyQuotaLimit.valueAsString,
         QUOTA_MONTHLY_LIMIT: monthlyQuotaLimit.valueAsString,
+        QUOTA_GLOBAL_LIMIT: globalQuotaLimit.valueAsString,
+        CONTROL_TABLE_NAME: controlTable.tableName,
       },
       bundling: { minify: true, sourceMap: true },
     });
-    table.grantReadWriteData(fn);
+    fn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['dynamodb:GetItem', 'dynamodb:BatchGetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:TransactWriteItems'],
+      resources: [table.tableArn],
+    }));
+    fn.addToRolePolicy(new iam.PolicyStatement({ actions: ['dynamodb:GetItem'], resources: [controlTable.tableArn] }));
+
+    const controlFn = new nodejs.NodejsFunction(this, 'AiControlHandler', {
+      entry: resolve('infra/lambda/ai-control-index.ts'), handler: 'main', runtime: lambda.Runtime.NODEJS_22_X,
+      timeout: Duration.seconds(10), memorySize: 256, environment: { CONTROL_TABLE_NAME: controlTable.tableName },
+      bundling: { minify: true, sourceMap: true },
+    });
+    controlFn.addToRolePolicy(new iam.PolicyStatement({ actions: ['dynamodb:TransactWriteItems'], resources: [controlTable.tableArn] }));
+    const notificationKey = new kms.Key(this, 'BudgetNotificationKey', {
+      enableKeyRotation: true, removalPolicy: props.config.removalPolicy, alias: `alias/fridge-manager-${props.config.environment}-budget-notifications`,
+    });
+    notificationKey.addToResourcePolicy(new iam.PolicyStatement({
+      principals: [new iam.ServicePrincipal('budgets.amazonaws.com')], actions: ['kms:Decrypt', 'kms:GenerateDataKey*', 'kms:DescribeKey'], resources: ['*'],
+      conditions: { StringEquals: { 'aws:SourceAccount': this.account }, ArnLike: { 'aws:SourceArn': `arn:${this.partition}:budgets::${this.account}:*` } },
+    }));
+    notificationKey.addToResourcePolicy(new iam.PolicyStatement({
+      principals: [new iam.ServicePrincipal('costalerts.amazonaws.com')], actions: ['kms:Decrypt', 'kms:GenerateDataKey*', 'kms:DescribeKey'], resources: ['*'],
+      conditions: { StringEquals: { 'aws:SourceAccount': this.account } },
+    }));
+    const dlqKey = new kms.Key(this, 'BudgetStopDlqKey', {
+      enableKeyRotation: true, removalPolicy: props.config.removalPolicy, alias: `alias/fridge-manager-${props.config.environment}-budget-stop-dlq`,
+    });
+    const alertTopic = new sns.Topic(this, 'BudgetAlerts', { masterKey: notificationKey });
+    const stopTopic = new sns.Topic(this, 'BudgetStop', { masterKey: notificationKey });
+    dlqKey.addToResourcePolicy(new iam.PolicyStatement({
+      principals: [new iam.ServicePrincipal('sns.amazonaws.com')], actions: ['kms:Decrypt', 'kms:GenerateDataKey*', 'kms:DescribeKey'], resources: ['*'],
+      conditions: { StringEquals: { 'aws:SourceAccount': this.account }, ArnLike: { 'aws:SourceArn': stopTopic.topicArn } },
+    }));
+    const stopDlq = new sqs.Queue(this, 'BudgetStopDlq', { encryption: sqs.QueueEncryption.KMS, encryptionMasterKey: dlqKey, retentionPeriod: Duration.days(14) });
+    alertTopic.addSubscription(new subscriptions.EmailSubscription(budgetNotificationEmail.valueAsString));
+    stopTopic.addSubscription(new subscriptions.EmailSubscription(budgetNotificationEmail.valueAsString));
+    stopTopic.addSubscription(new subscriptions.LambdaSubscription(controlFn, { deadLetterQueue: stopDlq }));
+    new cloudwatch.Alarm(this, 'BudgetStopDlqAlarm', {
+      metric: stopDlq.metricApproximateNumberOfMessagesVisible(), threshold: 1, evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+    }).addAlarmAction(new cwActions.SnsAction(alertTopic));
+    const budgetPolicyResults = [alertTopic, stopTopic].map((topic) => topic.addToResourcePolicy(new iam.PolicyStatement({
+      principals: [new iam.ServicePrincipal('budgets.amazonaws.com')], actions: ['sns:Publish'], resources: [topic.topicArn],
+      conditions: { StringEquals: { 'AWS:SourceAccount': this.account }, ArnLike: { 'AWS:SourceArn': `arn:${this.partition}:budgets::${this.account}:*` } },
+    })));
+    const costPolicyResult = alertTopic.addToResourcePolicy(new iam.PolicyStatement({
+      principals: [new iam.ServicePrincipal('costalerts.amazonaws.com')], actions: ['sns:Publish'], resources: [alertTopic.topicArn],
+      conditions: { StringEquals: { 'AWS:SourceAccount': this.account } },
+    }));
+    const budget = new budgets.CfnBudget(this, 'MonthlyAiBudget', {
+      budget: { budgetType: 'COST', timeUnit: 'MONTHLY', budgetLimit: { amount: 50, unit: 'USD' }, budgetName: `fridge-manager-${props.config.environment}-ai` },
+      notificationsWithSubscribers: [
+        { notification: { comparisonOperator: 'GREATER_THAN', notificationType: 'ACTUAL', threshold: 50, thresholdType: 'PERCENTAGE' }, subscribers: [{ subscriptionType: 'SNS', address: alertTopic.topicArn }] },
+        { notification: { comparisonOperator: 'GREATER_THAN', notificationType: 'ACTUAL', threshold: 80, thresholdType: 'PERCENTAGE' }, subscribers: [{ subscriptionType: 'SNS', address: alertTopic.topicArn }] },
+        { notification: { comparisonOperator: 'GREATER_THAN', notificationType: 'ACTUAL', threshold: 100, thresholdType: 'PERCENTAGE' }, subscribers: [{ subscriptionType: 'SNS', address: stopTopic.topicArn }] },
+      ],
+    });
+    for (const result of budgetPolicyResults) if (result.policyDependable) budget.node.addDependency(result.policyDependable);
+    const anomalyMonitor = new ce.CfnAnomalyMonitor(this, 'CostAnomalyMonitor', { monitorName: `fridge-manager-${props.config.environment}`, monitorType: 'DIMENSIONAL', monitorDimension: 'SERVICE' });
+    const anomalySubscription = new ce.CfnAnomalySubscription(this, 'CostAnomalySubscription', {
+      subscriptionName: `fridge-manager-${props.config.environment}`, frequency: 'IMMEDIATE', monitorArnList: [anomalyMonitor.attrMonitorArn],
+      subscribers: [{ type: 'SNS', address: alertTopic.topicArn }], thresholdExpression: JSON.stringify({ And: [{ Dimensions: { Key: 'ANOMALY_TOTAL_IMPACT_ABSOLUTE', MatchOptions: ['GREATER_THAN_OR_EQUAL'], Values: [anomalyThresholdUsd.valueAsString] } }] }),
+    });
+    if (costPolicyResult.policyDependable) anomalySubscription.node.addDependency(costPolicyResult.policyDependable);
 
     const specification = JSON.parse(readFileSync(resolve('infra/api/openapi.json'), 'utf8')) as Record<string, unknown>;
     const components = specification.components as { schemas: Record<string, unknown>; securitySchemes?: Record<string, unknown> };
@@ -107,8 +197,19 @@ export class AnalysisApiStack extends Stack {
     const api = new apigateway.SpecRestApi(this, 'AnalysisApi', {
       apiDefinition: apigateway.ApiDefinition.fromInline(specification),
       endpointTypes: [apigateway.EndpointType.REGIONAL], deployOptions: {
-        dataTraceEnabled: false, tracingEnabled: true, throttlingBurstLimit: 2, throttlingRateLimit: 10,
+        stageName: props.config.environment, dataTraceEnabled: false, tracingEnabled: true, throttlingBurstLimit: 2, throttlingRateLimit: 10,
       },
+    });
+    const webAcl = new wafv2.CfnWebACL(this, 'AnalysisWebAcl', { scope: 'REGIONAL', defaultAction: { allow: {} }, visibilityConfig: {
+      cloudWatchMetricsEnabled: true, metricName: `fridge-manager-${props.config.environment}-waf`, sampledRequestsEnabled: false,
+    }, rules: [{ name: 'AnalysisIpRateLimit', priority: 0, action: { block: {} }, statement: { rateBasedStatement: {
+      aggregateKeyType: 'IP', limit: 10, evaluationWindowSec: 60, scopeDownStatement: { andStatement: { statements: [
+        { byteMatchStatement: { fieldToMatch: { method: {} }, positionalConstraint: 'EXACTLY', searchString: 'POST', textTransformations: [{ priority: 0, type: 'NONE' }] } },
+        { byteMatchStatement: { fieldToMatch: { uriPath: {} }, positionalConstraint: 'EXACTLY', searchString: '/v1/analysis', textTransformations: [{ priority: 0, type: 'NONE' }] } },
+      ] } },
+    } }, visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: 'analysis-ip-rate-limit', sampledRequestsEnabled: false } }] });
+    new wafv2.CfnWebACLAssociation(this, 'AnalysisWebAclAssociation', {
+      webAclArn: webAcl.attrArn, resourceArn: `arn:${this.partition}:apigateway:${this.region}::/restapis/${api.restApiId}/stages/${api.deploymentStage.stageName}`,
     });
     fn.addPermission('AllowApiGatewayInvoke', { principal: new iam.ServicePrincipal('apigateway.amazonaws.com'), sourceArn: api.arnForExecuteApi('POST', '/v1/analysis') });
     authorizerFn.addPermission('AllowApiGatewayAuthorizerInvoke', {

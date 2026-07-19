@@ -248,4 +248,16 @@ describe('AI解析Lambda', () => {
     await createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore: untouched })(event({ ...validRequest, requestId: 'bad' }));
     expect(untouched.reserve).not.toHaveBeenCalled();
   });
+
+  it('予算緊急停止中はretryAtなし503でproviderを呼ばない', async () => {
+    const provider: AnalysisProvider = { analyze: jest.fn() };
+    const stopped: QuotaStore = { reserve: jest.fn().mockResolvedValue({ kind: 'stopped' }), succeed: jest.fn(), release: jest.fn() };
+    const idempotencyStore = new MemoryStore(); const abandon = jest.spyOn(idempotencyStore, 'abandon');
+    const response = await createAnalysisHandler({ provider, idempotencyStore, quotaStore: stopped })(event(validRequest));
+    expect(response.statusCode).toBe(503);
+    expect(JSON.parse(response.body ?? '{}')).toMatchObject({ error: { code: 'SERVICE_STOPPED' } });
+    expect(JSON.parse(response.body ?? '{}').error.retryAt).toBeUndefined();
+    expect(provider.analyze).not.toHaveBeenCalled();
+    expect(abandon).toHaveBeenCalledTimes(1);
+  });
 });

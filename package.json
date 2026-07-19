@@ -48,7 +48,8 @@
       "infra/lib/**/*.ts",
       "infra/lambda/**/*.ts",
       "!infra/lambda/index.ts",
-      "!infra/lambda/firebase-authorizer-index.ts"
+      "!infra/lambda/firebase-authorizer-index.ts",
+      "!infra/lambda/ai-control-index.ts"
     ],
     "coverageThreshold": {
       "global": {

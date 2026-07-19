@@ -11,7 +11,7 @@ describe('DynamoQuotaStore', () => {
     const result = await new DynamoQuotaStore('table', { minute: 2, daily: 5, monthly: 30 }, client as never, () => now).reserve(userHash, requestId);
     expect(result).toMatchObject({ kind: 'reserved' });
     const input = client.send.mock.calls[1]?.[0].input;
-    expect(input.TransactItems).toHaveLength(4);
+    expect(input.TransactItems).toHaveLength(5);
     expect(input.ClientRequestToken).toMatch(/^R-[0-9a-f]{32}$/);
     expect(JSON.stringify(input)).toContain('"N":"5"');
     expect(JSON.stringify(input)).toContain('"N":"30"');
@@ -47,12 +47,12 @@ describe('DynamoQuotaStore', () => {
 
   it('失敗返却は予約状態・短期token・日次・月次を同じtransactionで一度だけ戻す', async () => {
     const reservationKey = `QR#${userHash}#${requestId}`;
-    const reservation = { Item: { status: { S: 'RESERVED' }, minuteKey: { S: `Q#${userHash}#SHORT` }, dailyKey: { S: `Q#${userHash}#DAILY#2026-07-19` }, monthlyKey: { S: `Q#${userHash}#MONTHLY#2026-07` } } };
+    const reservation = { Item: { status: { S: 'RESERVED' }, minuteKey: { S: `Q#${userHash}#SHORT` }, dailyKey: { S: `Q#${userHash}#DAILY#2026-07-19` }, monthlyKey: { S: `Q#${userHash}#MONTHLY#2026-07` }, globalKey: { S: 'Q#GLOBAL#MONTHLY#2026-07' } } };
     const short = { Item: { tokens: { N: '0' }, updatedAt: { N: String(now.getTime()) } } };
     const client = { send: jest.fn().mockResolvedValueOnce(reservation).mockResolvedValueOnce(short).mockResolvedValueOnce({}) };
     await new DynamoQuotaStore('table', { minute: 2, daily: 5, monthly: 30 }, client as never, () => now).release(reservationKey);
     const input = client.send.mock.calls[2]?.[0].input;
-    expect(input.TransactItems).toHaveLength(4);
+    expect(input.TransactItems).toHaveLength(5);
     expect(input.ClientRequestToken).toMatch(/^L-[0-9a-f]{32}$/);
     expect(input.TransactItems[0].Update.ConditionExpression).toBe('#status = :reserved');
   });
@@ -88,7 +88,7 @@ describe('DynamoQuotaStore', () => {
 
   it('自然補充後の返却をcapacity 2に丸め、二重返却しない', async () => {
     const reservationKey = `QR#${userHash}#${requestId}`;
-    const reservation = { Item: { status: { S: 'RESERVED' }, minuteKey: { S: `Q#${userHash}#SHORT` }, dailyKey: { S: `Q#${userHash}#DAILY#2026-07-19` }, monthlyKey: { S: `Q#${userHash}#MONTHLY#2026-07` } } };
+    const reservation = { Item: { status: { S: 'RESERVED' }, minuteKey: { S: `Q#${userHash}#SHORT` }, dailyKey: { S: `Q#${userHash}#DAILY#2026-07-19` }, monthlyKey: { S: `Q#${userHash}#MONTHLY#2026-07` }, globalKey: { S: 'Q#GLOBAL#MONTHLY#2026-07' } } };
     const client = { send: jest.fn()
       .mockResolvedValueOnce(reservation)
       .mockResolvedValueOnce({ Item: { tokens: { N: '1.9' }, updatedAt: { N: String(now.getTime() - 30_000) } } })
@@ -128,5 +128,21 @@ describe('DynamoQuotaStore', () => {
     await new DynamoQuotaStore('table', { minute: 2, daily: 5, monthly: 30 }, client as never, () => now).succeed(`QR#${userHash}#${requestId}`);
     expect(client.send.mock.calls[0]?.[0].input.ConditionExpression).toContain('#status = :reserved OR #status = :succeeded');
     expect(client.send.mock.calls[0]?.[0].input.ConditionExpression).toContain('attribute_exists');
+  });
+
+  it('全体8000回上限を同じ予約transactionで拒否しJST月初を返す', async () => {
+    const canceled = new TransactionCanceledException({ $metadata: {}, message: 'global', CancellationReasons: [
+      { Code: 'None' }, { Code: 'None' }, { Code: 'None' }, { Code: 'None' }, { Code: 'ConditionalCheckFailed' }, { Code: 'None' },
+    ] });
+    const client = { send: jest.fn().mockResolvedValueOnce({}).mockRejectedValueOnce(canceled) };
+    await expect(new DynamoQuotaStore('table', { minute: 2, daily: 5, monthly: 30, global: 8000 }, client as never, () => now).reserve(userHash, requestId))
+      .resolves.toEqual({ kind: 'exceeded', limitType: 'GLOBAL', retryAt: '2026-07-31T15:00:00.000Z' });
+  });
+
+  it('緊急停止flag条件不一致をprovider前の停止状態として返す', async () => {
+    const client = { send: jest.fn().mockResolvedValueOnce({ Item: { enabled: { BOOL: false } } }) };
+    await expect(new DynamoQuotaStore('table', { minute: 2, daily: 5, monthly: 30, global: 8000 }, client as never, () => now, 'control').reserve(userHash, requestId))
+      .resolves.toEqual({ kind: 'stopped' });
+    expect(client.send).toHaveBeenCalledTimes(1);
   });
 });

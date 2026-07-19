@@ -17,9 +17,9 @@
         "error": {
           "type": "object", "additionalProperties": false, "required": ["code","retryable"],
           "properties": {
-            "code": { "enum": ["INVALID_REQUEST","INVALID_IMAGE","UNAUTHORIZED","DUPLICATE_REQUEST","IDEMPOTENCY_CONFLICT","TIMEOUT","PROVIDER_UNAVAILABLE","QUOTA_UNAVAILABLE","QUOTA_EXCEEDED","UNANALYZABLE_IMAGE","INTERNAL_ERROR"] },
+            "code": { "enum": ["INVALID_REQUEST","INVALID_IMAGE","UNAUTHORIZED","DUPLICATE_REQUEST","IDEMPOTENCY_CONFLICT","TIMEOUT","PROVIDER_UNAVAILABLE","QUOTA_UNAVAILABLE","QUOTA_EXCEEDED","SERVICE_STOPPED","UNANALYZABLE_IMAGE","INTERNAL_ERROR"] },
             "retryable": { "type": "boolean" }, "retryAt": { "type": "string", "format": "date-time" },
-            "quotaType": { "enum": ["SHORT","DAILY","MONTHLY"] }
+            "quotaType": { "enum": ["SHORT","DAILY","MONTHLY","GLOBAL","BUDGET"] }
           }
         }
       }

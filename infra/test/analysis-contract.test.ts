@@ -38,7 +38,7 @@ describe('AI解析API契約', () => {
       expect(serialized).toContain(code);
     }
     expect(serialized).toContain('"quotaType"');
-    for (const type of ['SHORT', 'DAILY', 'MONTHLY']) expect(serialized).toContain(type);
+    for (const type of ['SHORT', 'DAILY', 'MONTHLY', 'GLOBAL', 'BUDGET']) expect(serialized).toContain(type);
   });
 
   it('食材候補schemaを正本として追加プロパティ、数量、単位、不明値を制約する', () => {

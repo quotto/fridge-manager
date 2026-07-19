@@ -29,7 +29,7 @@ export interface IdempotencyStore {
 
 type ErrorCode = 'INVALID_REQUEST' | 'INVALID_IMAGE' | 'UNAUTHORIZED' | 'DUPLICATE_REQUEST' |
   'IDEMPOTENCY_CONFLICT' | 'TIMEOUT' | 'PROVIDER_UNAVAILABLE' | 'QUOTA_EXCEEDED' |
-  'QUOTA_UNAVAILABLE' | 'UNANALYZABLE_IMAGE' | 'INTERNAL_ERROR';
+  'QUOTA_UNAVAILABLE' | 'SERVICE_STOPPED' | 'UNANALYZABLE_IMAGE' | 'INTERNAL_ERROR';
 
 export class AnalysisError extends Error {
   public constructor(public readonly code: ErrorCode, public readonly statusCode: number, public readonly retryAt?: string, public readonly quotaType?: QuotaLimitType) {
@@ -154,6 +154,11 @@ export function createAnalysisHandler(deps: { readonly provider: AnalysisProvide
       claimed = true;
       let quota;
       try { quota = await deps.quotaStore.reserve(userHash, request.requestId); } catch { throw new AnalysisError('QUOTA_UNAVAILABLE', 503); }
+      if (quota.kind === 'stopped') {
+        await deps.idempotencyStore.abandon(`${userHash}#${request.requestId}`, hash);
+        claimed = false;
+        return response(503, request.requestId, 'SERVICE_STOPPED');
+      }
       if (quota.kind === 'exceeded') {
         await deps.idempotencyStore.abandon(`${userHash}#${request.requestId}`, hash);
         claimed = false;

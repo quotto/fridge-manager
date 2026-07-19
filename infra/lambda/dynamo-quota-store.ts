@@ -27,22 +27,28 @@ function jstPeriods(now: Date): Periods {
 export class DynamoQuotaStore implements QuotaStore {
   public constructor(
     private readonly tableName: string,
-    private readonly limits: { readonly minute: number; readonly daily: number; readonly monthly: number },
+    private readonly limits: { readonly minute: number; readonly daily: number; readonly monthly: number; readonly global?: number },
     private readonly client = new DynamoDBClient({}),
     private readonly now = () => new Date(),
+    private readonly controlTableName?: string,
   ) {
-    if (!tableName || Object.values(limits).some((limit) => !Number.isSafeInteger(limit) || limit < 1)) throw new Error('Quota configuration is invalid');
+    if (!tableName || Object.values(limits).some((limit) => limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1))) throw new Error('Quota configuration is invalid');
   }
 
   public async reserve(userHash: string, requestId: string): Promise<QuotaReservation> {
     if (!HASH.test(userHash) || !UUID.test(requestId)) throw new Error('Quota key is invalid');
     const currentTime = this.now();
+    if (this.controlTableName) {
+      const control = await this.client.send(new GetItemCommand({ TableName: this.controlTableName, Key: { controlId: { S: 'CONTROL#AI' } }, ConsistentRead: true }));
+      if (control.Item?.enabled?.BOOL !== true) return { kind: 'stopped' };
+    }
     const periods = jstPeriods(currentTime);
     const reservationKey = `QR#${userHash}#${requestId}`;
     const keys = {
       minute: `Q#${userHash}#SHORT`,
       daily: `Q#${userHash}#DAILY#${periods.daily.key}`,
       monthly: `Q#${userHash}#MONTHLY#${periods.monthly.key}`,
+      global: `Q#GLOBAL#MONTHLY#${periods.monthly.key}`,
     };
     const counter = (key: string, type: QuotaLimitType, period: Period, limit: number) => ({ Update: {
       TableName: this.tableName, Key: { requestId: { S: key } },
@@ -61,7 +67,7 @@ export class DynamoQuotaStore implements QuotaStore {
       const available = Math.min(this.limits.minute, previousTokens + Math.max(0, currentTime.getTime() - previousUpdatedAt) * refillPerMillisecond);
       if (available < 1) {
         const retry = currentTime.getTime() + Math.ceil((1 - available) / refillPerMillisecond);
-        let pending = [{ requestId: { S: keys.daily } }, { requestId: { S: keys.monthly } }];
+        let pending = [{ requestId: { S: keys.daily } }, { requestId: { S: keys.monthly } }, { requestId: { S: keys.global } }];
         const items: Array<Record<string, AttributeValue>> = [];
         for (let readAttempt = 0; readAttempt < 3 && pending.length > 0; readAttempt += 1) {
           const counters = await this.client.send(new BatchGetItemCommand({ RequestItems: { [this.tableName]: { Keys: pending, ConsistentRead: true } } }));
@@ -74,6 +80,7 @@ export class DynamoQuotaStore implements QuotaStore {
           if (!Number.isSafeInteger(value) || value < 0) throw new Error('Quota counter is corrupted');
           return value;
         };
+        if (count(keys.global) >= (this.limits.global ?? 8000)) return { kind: 'exceeded', limitType: 'GLOBAL', retryAt: periods.monthly.retryAt };
         if (count(keys.monthly) >= this.limits.monthly) return { kind: 'exceeded', limitType: 'MONTHLY', retryAt: periods.monthly.retryAt };
         if (count(keys.daily) >= this.limits.daily) return { kind: 'exceeded', limitType: 'DAILY', retryAt: periods.daily.retryAt };
         return { kind: 'exceeded', limitType: 'SHORT', retryAt: new Date(retry).toISOString() };
@@ -93,18 +100,19 @@ export class DynamoQuotaStore implements QuotaStore {
       await this.client.send(new TransactWriteItemsCommand({ ClientRequestToken: operationToken('R', `${reservationKey}#${previousUpdatedAt}#${previousTokens}`), TransactItems: [
         { Put: { TableName: this.tableName, Item: {
           requestId: { S: reservationKey }, status: { S: 'RESERVED' }, expiresAt: { N: String(Math.floor(currentTime.getTime() / 1000) + 24 * 60 * 60) },
-          minuteKey: { S: keys.minute }, dailyKey: { S: keys.daily }, monthlyKey: { S: keys.monthly },
+          minuteKey: { S: keys.minute }, dailyKey: { S: keys.daily }, monthlyKey: { S: keys.monthly }, globalKey: { S: keys.global },
         }, ConditionExpression: 'attribute_not_exists(requestId)' } },
         shortUpdate,
         counter(keys.daily, 'DAILY', periods.daily, this.limits.daily),
         counter(keys.monthly, 'MONTHLY', periods.monthly, this.limits.monthly),
+        counter(keys.global, 'GLOBAL', periods.monthly, this.limits.global ?? 8000),
       ] }));
       return { kind: 'reserved', reservationKey };
       } catch (error) {
         if (!(error instanceof TransactionCanceledException)) throw error;
         if (error.CancellationReasons?.[1]?.Code === 'ConditionalCheckFailed') continue;
       const candidates: Array<[number, QuotaLimitType, Period]> = [
-        [3, 'MONTHLY', periods.monthly], [2, 'DAILY', periods.daily],
+        [4, 'GLOBAL', periods.monthly], [3, 'MONTHLY', periods.monthly], [2, 'DAILY', periods.daily],
       ];
       const failed = candidates.filter(([index]) => error.CancellationReasons?.[index]?.Code === 'ConditionalCheckFailed');
       if (failed.length === 0) throw error;
@@ -128,7 +136,7 @@ export class DynamoQuotaStore implements QuotaStore {
       const existing = await this.client.send(new GetItemCommand({ TableName: this.tableName, Key: { requestId: { S: reservationKey } }, ConsistentRead: true }));
       if (existing.Item?.status?.S === 'RELEASED') return;
       if (existing.Item?.status?.S !== 'RESERVED') throw new Error('Quota reservation cannot be released');
-      const keys = [existing.Item.minuteKey?.S, existing.Item.dailyKey?.S, existing.Item.monthlyKey?.S];
+      const keys = [existing.Item.minuteKey?.S, existing.Item.dailyKey?.S, existing.Item.monthlyKey?.S, existing.Item.globalKey?.S];
       if (keys.some((key) => !key?.startsWith('Q#')) || keys.some((key) => key?.includes('undefined'))) throw new Error('Quota reservation is corrupted');
       const short = await this.client.send(new GetItemCommand({ TableName: this.tableName, Key: { requestId: { S: keys[0] as string } }, ConsistentRead: true }));
       const previousTokens = Number(short.Item?.tokens?.N); const previousUpdatedAt = Number(short.Item?.updatedAt?.N);
