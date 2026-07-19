@@ -1,0 +1,54 @@
+name: Rollback Production Release
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha: { description: Known-good deployed commit SHA, required: true, type: string }
+      issue: { description: Incident issue number, required: true, type: string }
+permissions: { contents: read, id-token: write }
+concurrency: { group: cloud-production-promotion, cancel-in-progress: false }
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production-plan
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: "22", cache: npm }
+      - run: npm ci --ignore-scripts
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4
+        with: { role-to-assume: "${{ vars.AWS_PLAN_ROLE_ARN }}", aws-region: ap-northeast-1 }
+      - name: Fetch checksum-protected known-good assembly
+        env: { RELEASE_BUCKET: "${{ vars.PROMOTION_ARTIFACT_BUCKET }}", RELEASE_SHA: "${{ inputs.release_sha }}" }
+        run: bash .github/scripts/fetch-release.sh
+      - run: npx cdk diff FridgeManagerProdFoundation FridgeManagerProdFoundationAnalysisApi --app .promotion/cdk.out --exclusively
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: "rollback-${{ inputs.release_sha }}", path: .promotion, retention-days: 1, if-no-files-found: error }
+  rollback:
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: production
+    env:
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+      FIREBASE_PROJECT_NUMBER: ${{ vars.FIREBASE_PROJECT_NUMBER }}
+      FIREBASE_APP_IDS: ${{ vars.FIREBASE_APP_IDS }}
+      GOOGLE_WIF_AUDIENCE: ${{ vars.GOOGLE_WIF_AUDIENCE }}
+      GOOGLE_SERVICE_ACCOUNT_EMAIL: ${{ vars.GOOGLE_SERVICE_ACCOUNT_EMAIL }}
+      BUDGET_NOTIFICATION_EMAIL: ${{ vars.BUDGET_NOTIFICATION_EMAIL }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: "22", cache: npm }
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with: { name: "rollback-${{ inputs.release_sha }}", path: .promotion }
+      - name: Reverify assembly after approval boundary
+        run: bash .github/scripts/verify-promotion.sh
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4
+        with: { role-to-assume: "${{ vars.AWS_DEPLOY_ROLE_ARN }}", aws-region: ap-northeast-1 }
+      - run: bash .github/scripts/deploy-cloud.sh prod .promotion/cdk.out
+      - run: bash .github/scripts/smoke-cloud.sh prod

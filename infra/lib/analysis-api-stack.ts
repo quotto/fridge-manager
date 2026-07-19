@@ -1,4 +1,4 @@
-import { CfnParameter, Duration, Stack, StackProps } from 'aws-cdk-lib';
+import { CfnOutput, CfnParameter, Duration, Stack, StackProps } from 'aws-cdk-lib';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
@@ -53,7 +53,7 @@ function inlineSchemaReference(value: unknown, reference: string, schema: unknow
 
 export class AnalysisApiStack extends Stack {
   public constructor(scope: Construct, id: string, props: AnalysisApiStackProps) {
-    super(scope, id, props);
+    super(scope, id, { ...props, terminationProtection: props.config.terminationProtection });
     const table = new dynamodb.Table(this, 'AnalysisIdempotency', {
       partitionKey: { name: 'requestId', type: dynamodb.AttributeType.STRING },
       timeToLiveAttribute: 'expiresAt', encryption: dynamodb.TableEncryption.AWS_MANAGED,
@@ -288,5 +288,8 @@ export class AnalysisApiStack extends Stack {
       principal: new iam.ServicePrincipal('apigateway.amazonaws.com'),
       sourceArn: this.formatArn({ service: 'execute-api', resource: api.restApiId, resourceName: 'authorizers/*' }),
     });
+    new CfnOutput(this, 'AnalysisApiUrl', { value: `${api.url}v1/analysis`, description: '認証必須の解析API endpoint' });
+    new CfnOutput(this, 'AiControlTableName', { value: controlTable.tableName, description: 'AI停止状態の検証用table' });
+    new CfnOutput(this, 'AiControlFunctionName', { value: controlFn.functionName, description: '監査付きAI停止・復旧function' });
   }
 }

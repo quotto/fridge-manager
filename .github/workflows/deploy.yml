@@ -1,0 +1,147 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: cloud-production-promotion
+  cancel-in-progress: false
+
+jobs:
+  staging:
+    name: Deploy and smoke test staging
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: staging
+    env:
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+      FIREBASE_PROJECT_NUMBER: ${{ vars.FIREBASE_PROJECT_NUMBER }}
+      FIREBASE_APP_IDS: ${{ vars.FIREBASE_APP_IDS }}
+      GOOGLE_WIF_AUDIENCE: ${{ vars.GOOGLE_WIF_AUDIENCE }}
+      GOOGLE_SERVICE_ACCOUNT_EMAIL: ${{ vars.GOOGLE_SERVICE_ACCOUNT_EMAIL }}
+      BUDGET_NOTIFICATION_EMAIL: ${{ vars.BUDGET_NOTIFICATION_EMAIL }}
+    steps:
+      - name: Checkout CI verified commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Reject stale main promotion
+        run: |
+          git fetch origin main --depth=1
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Synthesize and digest promotion assembly
+        run: bash .github/scripts/prepare-promotion.sh
+      - name: Configure staging AWS credentials
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-northeast-1
+      - name: Display staging diff
+        run: npx cdk diff FridgeManagerStgFoundation FridgeManagerStgFoundationAnalysisApi --app .promotion/cdk.out --exclusively
+      - name: Deploy staging with CloudFormation rollback
+        run: bash .github/scripts/deploy-cloud.sh stg .promotion/cdk.out
+      - name: Smoke test staging
+        run: bash .github/scripts/smoke-cloud.sh stg
+      - name: Preserve digested promotion assembly
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cdk-promotion-${{ github.event.workflow_run.head_sha || github.sha }}
+          path: |
+            .promotion/cdk.out.tgz
+            .promotion/cdk.out.tgz.sha256
+          retention-days: 90
+          if-no-files-found: error
+
+  production-plan:
+    needs: staging
+    name: Review production CloudFormation diff
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production-plan
+    steps:
+      - name: Checkout same promoted commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: "22", cache: npm }
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: cdk-promotion-${{ github.event.workflow_run.head_sha || github.sha }}
+          path: .promotion
+      - run: bash .github/scripts/verify-promotion.sh
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ap-northeast-1
+      - name: Display production diff for approvers
+        run: npx cdk diff FridgeManagerProdFoundation FridgeManagerProdFoundationAnalysisApi --app .promotion/cdk.out --exclusively
+
+  production:
+    name: Approve, deploy and smoke test production
+    needs: production-plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: production
+    env:
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+      FIREBASE_PROJECT_NUMBER: ${{ vars.FIREBASE_PROJECT_NUMBER }}
+      FIREBASE_APP_IDS: ${{ vars.FIREBASE_APP_IDS }}
+      GOOGLE_WIF_AUDIENCE: ${{ vars.GOOGLE_WIF_AUDIENCE }}
+      GOOGLE_SERVICE_ACCOUNT_EMAIL: ${{ vars.GOOGLE_SERVICE_ACCOUNT_EMAIL }}
+      BUDGET_NOTIFICATION_EMAIL: ${{ vars.BUDGET_NOTIFICATION_EMAIL }}
+    steps:
+      - name: Checkout same promoted commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: "22", cache: npm }
+      - run: npm ci --ignore-scripts
+      - name: Download the staging-tested assembly
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: cdk-promotion-${{ github.event.workflow_run.head_sha || github.sha }}
+          path: .promotion
+      - name: Verify and extract the exact assembly
+        run: bash .github/scripts/verify-promotion.sh
+      - name: Configure production AWS credentials
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-northeast-1
+      - name: Deploy production with CloudFormation rollback
+        run: bash .github/scripts/deploy-cloud.sh prod .promotion/cdk.out
+      - name: Smoke test production
+        run: bash .github/scripts/smoke-cloud.sh prod
+      - name: Retain known-good assembly
+        env:
+          RELEASE_BUCKET: ${{ vars.PROMOTION_ARTIFACT_BUCKET }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: bash .github/scripts/retain-promotion.sh
