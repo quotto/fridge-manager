@@ -47,8 +47,12 @@ describe('cloud deployment workflow', () => {
     expect(script).toContain('--rollback');
     expect(script).not.toContain('--no-rollback');
     expect(script).toContain('--require-approval never');
-    expect(script).toContain('aws sts get-caller-identity');
-    expect(script).toContain('actual_account" == "$AWS_ACCOUNT_ID');
+    expect(script).toContain('bash .github/scripts/verify-aws-account.sh');
+    const accountGuard = read('.github/scripts/verify-aws-account.sh');
+    expect(accountGuard).toContain('aws sts get-caller-identity');
+    expect(accountGuard).toContain('actual_account" == "$AWS_ACCOUNT_ID');
+    expect(workflow).toContain('Verify production plan AWS account');
+    expect(read('.github/workflows/rollback-release.yml')).toContain('bash .github/scripts/verify-aws-account.sh');
   });
 
   it('promotion assemblyにstg/prod両stackを要求する', () => {
