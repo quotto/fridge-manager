@@ -83,7 +83,7 @@ describe('AnalysisApiStack', () => {
   });
 
   it('Budget通知SNSと停止DLQをローテーション有効な用途別CMKで暗号化する', () => {
-    template.resourceCountIs('AWS::KMS::Key', 2);
+    template.resourceCountIs('AWS::KMS::Key', 3);
     template.allResourcesProperties('AWS::KMS::Key', { EnableKeyRotation: true });
     const topics = template.findResources('AWS::SNS::Topic');
     expect(Object.values(topics)).toHaveLength(2);
@@ -94,5 +94,23 @@ describe('AnalysisApiStack', () => {
     for (const principal of ['budgets.amazonaws.com', 'costalerts.amazonaws.com', 'sns.amazonaws.com']) expect(rendered).toContain(principal);
     expect(rendered).toContain('kms:GenerateDataKey*');
     expect(rendered).toContain('aws:SourceAccount');
+  });
+
+  it('暗号化・環境別保持のlog groupとSLO dashboard/alarmを作る', () => {
+    template.resourceCountIs('AWS::Logs::LogGroup', 3);
+    template.allResourcesProperties('AWS::Logs::LogGroup', { KmsKeyId: Match.anyValue(), RetentionInDays: 14 });
+    template.resourceCountIs('AWS::CloudWatch::Dashboard', 1);
+    const rendered = JSON.stringify(template.toJSON());
+    for (const value of ['CoreAvailabilityAlarm', 'ProviderFailureAlarm', 'LatencyP95Alarm', 'AnalysisLambdaErrorAlarm', 'AnalysisLambdaThrottleAlarm', 'AnalysisApi5xxAlarm', 'AuthorizerLambdaErrorAlarm', '30-day availability', '30-day rolling', 'ProviderCalls']) expect(rendered).toContain(value);
+    expect(rendered).toContain('FridgeManager/Analysis');
+  });
+
+  it('各アプリLambdaのログ権限を対応LogGroupへのstream書込だけに限定する', () => {
+    const rendered = JSON.stringify(template.findResources('AWS::IAM::Policy'));
+    expect(rendered).toContain('logs:CreateLogStream');
+    expect(rendered).toContain('logs:PutLogEvents');
+    expect(rendered).toContain('AuthorizerLogs');
+    expect(rendered).toContain('AnalysisLogs');
+    expect(rendered).toContain('ControlLogs');
   });
 });

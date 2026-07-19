@@ -260,4 +260,11 @@ describe('AI解析Lambda', () => {
     expect(provider.analyze).not.toHaveBeenCalled();
     expect(abandon).toHaveBeenCalledTimes(1);
   });
+
+  it('telemetry障害でも成功応答を失わない', async () => {
+    const provider: AnalysisProvider = { analyze: jest.fn().mockResolvedValue({ requestId: validRequest.requestId, status: 'succeeded', candidates: [], warnings: [] }) };
+    const response = await createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore,
+      telemetry: { record() { throw new Error('observability unavailable'); } }, now: () => 100 })(event(validRequest));
+    expect(response.statusCode).toBe(200);
+  });
 });
