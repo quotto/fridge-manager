@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.quotto.fridgemanager.di.AppContainer
 import com.quotto.fridgemanager.ui.navigation.AppNavigation
@@ -19,6 +20,9 @@ fun FridgeManagerApp(container: AppContainer) {
     val inventoryState by stateFlow.collectAsStateWithLifecycle(
         initialValue = InventoryUiState.Loading,
     )
+    LaunchedEffect(container.authCoordinator) {
+        container.authCoordinator.initialize()
+    }
 
     FridgeManagerTheme {
         AppNavigation(
