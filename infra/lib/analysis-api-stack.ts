@@ -19,6 +19,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Construct } from 'constructs';
 import { EnvironmentConfig } from './environment-config';
+import { loadBedrockModelPolicy } from './bedrock-model-policy';
 
 export interface AnalysisApiStackProps extends StackProps { readonly config: EnvironmentConfig; }
 
@@ -59,6 +60,8 @@ function inlineSchemaReference(value: unknown, reference: string, schema: unknow
 export class AnalysisApiStack extends Stack {
   public constructor(scope: Construct, id: string, props: AnalysisApiStackProps) {
     super(scope, id, { ...props, terminationProtection: props.config.terminationProtection });
+    // synth/deploy時に公式証跡の内容と期限を検証し、古い自己申告値でのデプロイを拒否する。
+    const bedrockPolicy = loadBedrockModelPolicy();
     const table = new dynamodb.Table(this, 'AnalysisIdempotency', {
       partitionKey: { name: 'requestId', type: dynamodb.AttributeType.STRING },
       timeToLiveAttribute: 'expiresAt', encryption: dynamodb.TableEncryption.AWS_MANAGED,
@@ -138,6 +141,9 @@ export class AnalysisApiStack extends Stack {
         QUOTA_GLOBAL_LIMIT: globalQuotaLimit.valueAsString,
         CONTROL_TABLE_NAME: controlTable.tableName,
         ENVIRONMENT: props.config.environment,
+        BEDROCK_REGION: bedrockPolicy.region,
+        BEDROCK_MODEL_ID: bedrockPolicy.modelId,
+        BEDROCK_MODEL_ALLOWED_MODES: bedrockPolicy.allowedModes.join(','),
       },
       bundling: { minify: true, sourceMap: true },
     });
@@ -146,6 +152,18 @@ export class AnalysisApiStack extends Stack {
       resources: [table.tableArn],
     }));
     fn.addToRolePolicy(new iam.PolicyStatement({ actions: ['dynamodb:GetItem'], resources: [controlTable.tableArn] }));
+    const inferenceProfileArn = `arn:${this.partition}:bedrock:${bedrockPolicy.region}:${this.account}:inference-profile/${bedrockPolicy.modelId}`;
+    fn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock:InvokeModel'],
+      resources: [inferenceProfileArn],
+    }));
+    fn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock:InvokeModel'],
+      resources: bedrockPolicy.destinationRegions.map((region) => `arn:${this.partition}:bedrock:${region}::foundation-model/${bedrockPolicy.foundationModelId}`),
+      conditions: { StringEquals: { 'bedrock:InferenceProfileArn': inferenceProfileArn } },
+    }));
+    // GetAccountDataRetentionはresource-level permissionをサポートしない。
+    fn.addToRolePolicy(new iam.PolicyStatement({ actions: ['bedrock:GetAccountDataRetention'], resources: ['*'] }));
 
     const controlFn = new nodejs.NodejsFunction(this, 'AiControlHandler', {
       functionName: `fridge-manager-${props.config.environment}-control`, logGroup: controlLogGroup, role: lambdaRole('Control', controlLogGroup),
