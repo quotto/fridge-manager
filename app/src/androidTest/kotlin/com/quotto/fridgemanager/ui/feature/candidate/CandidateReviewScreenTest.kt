@@ -1,0 +1,132 @@
+package com.quotto.fridgemanager.ui.feature.candidate
+
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import com.quotto.fridgemanager.domain.analysis.AnalysisApiResult
+import com.quotto.fridgemanager.domain.analysis.AnalysisCandidate
+import com.quotto.fridgemanager.domain.inventory.IngredientDraft
+import com.quotto.fridgemanager.domain.inventory.InventoryBatch
+import com.quotto.fridgemanager.domain.inventory.InventoryRepository
+import com.quotto.fridgemanager.domain.inventory.StoredIngredient
+import com.quotto.fridgemanager.presentation.candidate.CandidateReviewPresenter
+import com.quotto.fridgemanager.presentation.candidate.ReviewedCandidate
+import com.quotto.fridgemanager.ui.feature.image.CandidateReviewScreen
+import com.quotto.fridgemanager.ui.theme.FridgeManagerTheme
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+import org.junit.Assert.assertEquals
+import org.junit.Rule
+import org.junit.Test
+
+class CandidateReviewScreenTest {
+    @get:Rule val composeRule = createComposeRule()
+
+    @Test
+    fun `候補の根拠と要確認と警告と未入力と既存在庫を表示する`() {
+        val repository = RecordingRepository(listOf(storedIngredient()))
+        composeRule.setContent {
+            FridgeManagerTheme {
+                CandidateReviewScreen(
+                    result = success(
+                        candidates = listOf(
+                            AnalysisCandidate("豆腐", "2", "丁", "VISIBLE", false),
+                            AnalysisCandidate(null, null, null, "INFERRED", true),
+                        ),
+                        warnings = listOf("LOW_CONFIDENCE"),
+                    ),
+                    presenter = CandidateReviewPresenter(repository),
+                    onValidated = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("根拠: 画像で確認").assertIsDisplayed()
+        composeRule.onNodeWithText("根拠: 画像から推定").assertIsDisplayed()
+        composeRule.onNodeWithText("要確認").assertIsDisplayed()
+        composeRule.onNodeWithText("警告: 推定の確度が低い候補があります").assertIsDisplayed()
+        composeRule.onNodeWithText("現在の在庫: 1 丁").assertIsDisplayed()
+        composeRule.onAllNodesWithText("食材名")[1].assertTextContains("食材名を入力してください")
+        composeRule.onAllNodesWithText("推定数量")[1].assertTextContains("在庫数は小数2桁までの数値で入力してください")
+    }
+
+    @Test
+    fun `候補の追加編集と除外復帰に応じて次へボタンを制御する`() {
+        composeRule.setContent {
+            FridgeManagerTheme {
+                CandidateReviewScreen(
+                    result = success(listOf(AnalysisCandidate("卵", "6", "個", "VISIBLE", false))),
+                    presenter = CandidateReviewPresenter(RecordingRepository()),
+                    onValidated = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("確認内容を次へ進める").assertIsEnabled()
+        composeRule.onNodeWithText("候補を追加する").performClick()
+        composeRule.onNodeWithText("確認内容を次へ進める").assertIsNotEnabled()
+
+        composeRule.onAllNodesWithText("食材名")[1].performTextInput("牛乳")
+        composeRule.onAllNodesWithText("推定数量")[1].performTextInput("1")
+        composeRule.onNodeWithText("単位を選択（未入力）").performClick()
+        composeRule.onNodeWithText("本").performClick()
+        composeRule.onNodeWithText("確認内容を次へ進める").assertIsEnabled()
+
+        composeRule.onAllNodesWithText("除外する")[1].performClick()
+        composeRule.onNodeWithContentDescription("除外したAI候補").assertIsDisplayed()
+        composeRule.onNodeWithText("確認内容を次へ進める").assertIsEnabled()
+        composeRule.onNodeWithText("候補に戻す").performClick()
+        composeRule.onAllNodesWithText("食材名")[1].assertIsDisplayed()
+        composeRule.onNodeWithText("確認内容を次へ進める").assertIsEnabled()
+    }
+
+    @Test
+    fun `全候補が有効なら次へ渡すがRoomには保存しない`() {
+        val repository = RecordingRepository()
+        var handedOff: List<ReviewedCandidate> = emptyList()
+        composeRule.setContent {
+            FridgeManagerTheme {
+                CandidateReviewScreen(
+                    result = success(listOf(AnalysisCandidate("米", "2", "kg", "VISIBLE", false))),
+                    presenter = CandidateReviewPresenter(repository),
+                    onValidated = { handedOff = it },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("確認内容を次へ進める").performClick()
+        composeRule.waitUntil { handedOff.size == 1 }
+        composeRule.onNodeWithText("1件を確認しました（在庫にはまだ反映されていません）").assertIsDisplayed()
+        assertEquals(0, repository.saveCount)
+    }
+}
+
+private fun success(
+    candidates: List<AnalysisCandidate>,
+    warnings: List<String> = emptyList(),
+) = AnalysisApiResult.Success("candidate-review-test", candidates, warnings)
+
+private fun storedIngredient(): StoredIngredient {
+    val draft = IngredientDraft.create("豆腐", "1", "丁")
+    return StoredIngredient("stored", draft.name, draft.quantity, draft.unit, 1, 1)
+}
+
+private class RecordingRepository(
+    private val items: List<StoredIngredient> = emptyList(),
+) : InventoryRepository {
+    var saveCount = 0
+        private set
+
+    override suspend fun hasItems() = items.isNotEmpty()
+    override suspend fun getAll() = items
+    override fun observeAll(): Flow<List<StoredIngredient>> = flowOf(items)
+    override suspend fun searchByName(normalizedQuery: String) = items
+    override suspend fun saveBatch(batch: InventoryBatch) { saveCount++ }
+}
