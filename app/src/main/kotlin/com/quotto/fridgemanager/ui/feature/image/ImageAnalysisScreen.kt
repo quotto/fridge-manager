@@ -46,6 +46,10 @@ import com.quotto.fridgemanager.presentation.image.ImageAnalysisState
 import com.quotto.fridgemanager.ui.component.ScreenHeader
 import com.quotto.fridgemanager.presentation.candidate.CandidateReviewPresenter
 import com.quotto.fridgemanager.presentation.candidate.ReviewedCandidate
+import com.quotto.fridgemanager.presentation.inventory.AiUpdateCandidatePresenter
+import com.quotto.fridgemanager.domain.inventory.IngredientName
+import com.quotto.fridgemanager.domain.inventory.StoredIngredient
+import com.quotto.fridgemanager.domain.inventory.DomainValidationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -62,6 +66,9 @@ fun ImageAnalysisScreen(
     onManualRegistration: () -> Unit,
     candidateReviewPresenter: CandidateReviewPresenter,
     onCandidatesValidated: (List<ReviewedCandidate>) -> Unit,
+    updateIngredient: StoredIngredient? = null,
+    aiUpdateCandidatePresenter: AiUpdateCandidatePresenter? = null,
+    onUpdateSaved: () -> Unit = {},
     onSendImage: suspend (PreprocessedImage, String, () -> Unit) -> com.quotto.fridgemanager.domain.analysis.AnalysisApiResult.Success,
 ) {
     val context = LocalContext.current
@@ -134,11 +141,41 @@ fun ImageAnalysisScreen(
 
     val currentAnalysisState = analysisState
     if (currentAnalysisState is ImageAnalysisState.Succeeded && currentAnalysisState.result != null) {
-        CandidateReviewScreen(
-            result = currentAnalysisState.result,
-            presenter = candidateReviewPresenter,
-            onValidated = onCandidatesValidated,
-        )
+        if (updateIngredient == null) {
+            CandidateReviewScreen(
+                result = currentAnalysisState.result,
+                presenter = candidateReviewPresenter,
+                onValidated = onCandidatesValidated,
+            )
+        } else {
+            val matchingCandidates = currentAnalysisState.result.candidates.filter { candidate ->
+                try {
+                    candidate.name != null &&
+                        IngredientName.from(candidate.name).normalizedValue == updateIngredient.name.normalizedValue
+                } catch (_: DomainValidationException) {
+                    false
+                }
+            }
+            val presenter = aiUpdateCandidatePresenter
+            if (matchingCandidates.size == 1 && presenter != null) {
+                AiUpdateCandidateScreen(
+                    requestId = currentAnalysisState.result.requestId,
+                    ingredient = updateIngredient,
+                    candidate = matchingCandidates.single(),
+                    presenter = presenter,
+                    onSaved = onUpdateSaved,
+                    onBack = analysis::cancel,
+                )
+            } else {
+                Column(Modifier.fillMaxSize()) {
+                    ScreenHeader(title = "AI更新候補の確認")
+                    Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("更新対象に対応する候補を1件に特定できませんでした。画像を選び直してください")
+                        Button(onClick = analysis::cancel, modifier = Modifier.fillMaxWidth()) { Text("画像を選び直す") }
+                    }
+                }
+            }
+        }
         return
     }
     if (currentAnalysisState is ImageAnalysisState.Ready || currentAnalysisState is ImageAnalysisState.Sending || currentAnalysisState is ImageAnalysisState.Analyzing ||
