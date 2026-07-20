@@ -33,6 +33,17 @@ describe('AnalysisApiStack', () => {
     }) } });
   });
 
+  it('Google WIFの主体をFirebase検証Lambdaの固定実行ロールへ限定できる', () => {
+    template.hasResourceProperties('AWS::IAM::Role', {
+      RoleName: 'FridgeManagerDevFoundationFirebaseAuthorizerRole',
+      AssumeRolePolicyDocument: {
+        Version: '2012-10-17',
+        Statement: [{ Action: 'sts:AssumeRole', Effect: 'Allow', Principal: { Service: 'lambda.amazonaws.com' } }],
+      },
+    });
+    template.hasOutput('FirebaseAuthorizerRoleArn', { Value: Match.anyValue() });
+  });
+
   it('requestId単位の冪等性ストアをTTL・暗号化付きで作る', () => {
     template.hasResourceProperties('AWS::DynamoDB::Table', {
       AttributeDefinitions: [{ AttributeName: 'requestId', AttributeType: 'S' }],
