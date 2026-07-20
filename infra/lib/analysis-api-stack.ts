@@ -81,7 +81,7 @@ export class AnalysisApiStack extends Stack {
     const dailyQuotaLimit = new CfnParameter(this, 'DailyQuotaLimit', { type: 'Number', default: 5, minValue: 1 });
     const monthlyQuotaLimit = new CfnParameter(this, 'MonthlyQuotaLimit', { type: 'Number', default: 30, minValue: 1 });
     const globalQuotaLimit = new CfnParameter(this, 'GlobalQuotaLimit', { type: 'Number', default: 8000, minValue: 1 });
-    const budgetNotificationEmail = new CfnParameter(this, 'BudgetNotificationEmail', { type: 'String', allowedPattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$' });
+    const operationsNotificationEmail = new CfnParameter(this, 'OperationsNotificationEmail', { type: 'String', allowedPattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$' });
     const anomalyThresholdUsd = new CfnParameter(this, 'AnomalyThresholdUsd', { type: 'Number', default: 5, minValue: 1 });
     const logKey = new kms.Key(this, 'ApplicationLogKey', {
       enableKeyRotation: true, removalPolicy: props.config.removalPolicy, alias: `alias/fridge-manager-${props.config.environment}-logs`,
@@ -170,8 +170,8 @@ export class AnalysisApiStack extends Stack {
       conditions: { StringEquals: { 'aws:SourceAccount': this.account }, ArnLike: { 'aws:SourceArn': stopTopic.topicArn } },
     }));
     const stopDlq = new sqs.Queue(this, 'BudgetStopDlq', { encryption: sqs.QueueEncryption.KMS, encryptionMasterKey: dlqKey, retentionPeriod: Duration.days(14) });
-    alertTopic.addSubscription(new subscriptions.EmailSubscription(budgetNotificationEmail.valueAsString));
-    stopTopic.addSubscription(new subscriptions.EmailSubscription(budgetNotificationEmail.valueAsString));
+    alertTopic.addSubscription(new subscriptions.EmailSubscription(operationsNotificationEmail.valueAsString));
+    stopTopic.addSubscription(new subscriptions.EmailSubscription(operationsNotificationEmail.valueAsString));
     stopTopic.addSubscription(new subscriptions.LambdaSubscription(controlFn, { deadLetterQueue: stopDlq }));
     const budgetStopDlqAlarm = new cloudwatch.Alarm(this, 'BudgetStopDlqAlarm', {
       metric: stopDlq.metricApproximateNumberOfMessagesVisible(), threshold: 1, evaluationPeriods: 1,
