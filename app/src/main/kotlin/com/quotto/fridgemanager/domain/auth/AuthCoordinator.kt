@@ -21,8 +21,8 @@ interface AppCheckGateway {
 }
 
 class AiRequestAuthorization(
-    val idToken: String,
-    val appCheckToken: String,
+    internal val idToken: String,
+    internal val appCheckToken: String,
 ) {
     override fun toString(): String = "AiRequestAuthorization(redacted)"
 }
@@ -59,7 +59,7 @@ class AuthCoordinator(
     }
 
     /** API 呼出し直前に2種類の短命tokenを取得し、呼出し側へ一度だけ引き渡す。 */
-    suspend fun prepareAiRequest(): AiRequestAuthorization? = operation.withLock {
+    internal suspend fun prepareAiRequest(): AiRequestAuthorization? = operation.withLock {
         try {
             val user = ensureAnonymousUser()
             val idToken = firebaseAuth.getIdToken(user, forceRefresh = true)
@@ -75,7 +75,28 @@ class AuthCoordinator(
         }
     }
 
-    suspend fun retry(): AiRequestAuthorization? = prepareAiRequest()
+    internal suspend fun retry(): AiRequestAuthorization? = prepareAiRequest()
+
+    /** limited-use tokenを保持・再利用させず、取得直後の単一送信境界だけへ渡す。 */
+    suspend fun <T> withFreshAuthorization(
+        block: suspend (AiRequestAuthorization) -> T,
+    ): T? = operation.withLock {
+        val authorization = try {
+            val user = ensureAnonymousUser()
+            val idToken = firebaseAuth.getIdToken(user, forceRefresh = true)
+            val appCheckToken = appCheck.getLimitedUseToken()
+            require(idToken.isNotBlank() && appCheckToken.isNotBlank())
+            mutableState.value = AuthState.Ready
+            AiRequestAuthorization(idToken, appCheckToken)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            markUnavailable()
+            return@withLock null
+        }
+        // transport例外は認証障害へ変換せず、そのまま呼出側で分類する。
+        block(authorization)
+    }
 
     private suspend fun ensureAnonymousUser(): AnonymousUser =
         firebaseAuth.currentAnonymousUser() ?: firebaseAuth.signInAnonymously()

@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 ksp {
@@ -47,6 +48,12 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+
+    val analysisApiBaseUrl = providers.gradleProperty("ANALYSIS_API_BASE_URL").orElse("")
+    defaultConfig {
+        buildConfigField("String", "ANALYSIS_API_BASE_URL", "\"${analysisApiBaseUrl.get().replace("\\", "\\\\").replace("\"", "\\\"")}\"")
     }
 
     testOptions {
@@ -73,6 +80,7 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
     implementation(libs.firebase.appcheck.playintegrity)
+    implementation(libs.kotlinx.serialization.json)
 
     ksp(libs.androidx.room.compiler)
 
