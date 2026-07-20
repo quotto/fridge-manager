@@ -69,6 +69,7 @@ describe('AnalysisApiStack', () => {
 
   it('全体8000回、WAF 10回/分、50 USD予算と50/80/100通知を構成する', () => {
     expect(template.toJSON().Parameters).toMatchObject({ GlobalQuotaLimit: { Default: 8000 }, AnomalyThresholdUsd: { Default: 5 } });
+    expect(template.toJSON().Parameters).not.toHaveProperty('BudgetNotificationEmail');
     template.hasResourceProperties('AWS::WAFv2::WebACL', { Scope: 'REGIONAL', Rules: [Match.objectLike({ Statement: { RateBasedStatement: Match.objectLike({ Limit: 10, EvaluationWindowSec: 60, AggregateKeyType: 'IP' }) }, VisibilityConfig: Match.objectLike({ SampledRequestsEnabled: false }) })] });
     template.hasResourceProperties('AWS::Budgets::Budget', { Budget: { BudgetLimit: { Amount: 50, Unit: 'USD' }, TimeUnit: 'MONTHLY' } });
     const rendered = JSON.stringify(template.toJSON());
@@ -80,6 +81,8 @@ describe('AnalysisApiStack', () => {
     expect(rendered).toContain('AWS:SourceAccount');
     expect(rendered).toContain('AWS:SourceArn');
     expect(rendered).toContain('BudgetStopDlq');
+    template.resourceCountIs('AWS::SNS::Subscription', 1);
+    template.hasResourceProperties('AWS::SNS::Subscription', { Protocol: 'lambda' });
   });
 
   it('解析・制御LambdaのDynamoDB権限を実使用APIへ限定する', () => {

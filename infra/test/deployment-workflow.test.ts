@@ -55,6 +55,14 @@ describe('cloud deployment workflow', () => {
     expect(read('.github/workflows/rollback-release.yml')).toContain('bash .github/scripts/verify-aws-account.sh');
   });
 
+  it('既存AWS予算通知を再利用しメールアドレスをデプロイ入力に要求しない', () => {
+    const deployScript = read('.github/scripts/deploy-cloud.sh');
+    const rollbackWorkflow = read('.github/workflows/rollback-release.yml');
+    expect(workflow).not.toContain('BUDGET_NOTIFICATION_EMAIL');
+    expect(rollbackWorkflow).not.toContain('BUDGET_NOTIFICATION_EMAIL');
+    expect(deployScript).not.toContain('BUDGET_NOTIFICATION_EMAIL');
+  });
+
   it('promotion assemblyにstg/prod両stackを要求する', () => {
     const script = read('.github/scripts/verify-promotion.sh');
     for (const stack of ['FridgeManagerStgFoundation', 'FridgeManagerStgFoundationAnalysisApi', 'FridgeManagerProdFoundation', 'FridgeManagerProdFoundationAnalysisApi']) {
