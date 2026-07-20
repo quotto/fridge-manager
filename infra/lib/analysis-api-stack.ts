@@ -97,13 +97,17 @@ export class AnalysisApiStack extends Stack {
     const authorizerLogGroup = applicationLogGroup('Authorizer');
     const analysisLogGroup = applicationLogGroup('Analysis');
     const controlLogGroup = applicationLogGroup('Control');
-    const lambdaRole = (name: string, logGroup: logs.ILogGroup) => {
-      const role = new iam.Role(this, `${name}Role`, { assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com') });
+    const lambdaRole = (name: string, logGroup: logs.ILogGroup, roleName?: string) => {
+      const role = new iam.Role(this, `${name}Role`, {
+        assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+        ...(roleName ? { roleName } : {}),
+      });
       role.addToPolicy(new iam.PolicyStatement({ actions: ['logs:CreateLogStream', 'logs:PutLogEvents'], resources: [`${logGroup.logGroupArn}:*`] }));
       return role;
     };
     const authorizerFn = new nodejs.NodejsFunction(this, 'FirebaseAuthorizer', {
-      functionName: `fridge-manager-${props.config.environment}-authorizer`, logGroup: authorizerLogGroup, role: lambdaRole('Authorizer', authorizerLogGroup),
+      functionName: `fridge-manager-${props.config.environment}-authorizer`, logGroup: authorizerLogGroup,
+      role: lambdaRole('Authorizer', authorizerLogGroup, `${props.config.stackName}FirebaseAuthorizerRole`),
       entry: resolve('infra/lambda/firebase-authorizer-index.ts'), handler: 'main', runtime: lambda.Runtime.NODEJS_22_X,
       timeout: Duration.seconds(10), memorySize: 256,
       environment: {
