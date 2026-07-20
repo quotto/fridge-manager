@@ -93,6 +93,12 @@ describe('AnalysisApiStack', () => {
     const rendered = JSON.stringify(template.toJSON());
     for (const threshold of [50, 80, 100]) expect(rendered).toContain(`"Threshold":${threshold}`);
     expect(rendered).toContain('AWS::CE::AnomalySubscription');
+    const anomalySubscription = Object.values(template.findResources('AWS::CE::AnomalySubscription'))[0]!;
+    const thresholdExpression = JSON.stringify(anomalySubscription.Properties.ThresholdExpression);
+    expect(thresholdExpression).toContain('ANOMALY_TOTAL_IMPACT_ABSOLUTE');
+    expect(thresholdExpression).toContain('GREATER_THAN_OR_EQUAL');
+    expect(thresholdExpression).toContain('AnomalyThresholdUsd');
+    expect(thresholdExpression).not.toContain('And');
     expect(rendered).toContain('CONTROL#AI');
     expect(rendered).toContain('budgets.amazonaws.com');
     expect(rendered).toContain('costalerts.amazonaws.com');
