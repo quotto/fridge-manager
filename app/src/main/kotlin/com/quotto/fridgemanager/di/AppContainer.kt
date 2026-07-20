@@ -4,6 +4,8 @@ import android.content.Context
 import com.quotto.fridgemanager.data.local.EmptyInventoryRepository
 import com.quotto.fridgemanager.data.local.InventoryDatabase
 import com.quotto.fridgemanager.data.local.RoomInventoryRepository
+import com.quotto.fridgemanager.data.auth.FirebaseAuthComposition
+import com.quotto.fridgemanager.domain.auth.AuthCoordinator
 import com.quotto.fridgemanager.domain.inventory.InventoryRepository
 import com.quotto.fridgemanager.presentation.inventory.InventoryPresenter
 import com.quotto.fridgemanager.presentation.inventory.IngredientUpdatePresenter
@@ -15,6 +17,7 @@ interface AppContainer {
     val inventoryPresenter: InventoryPresenter
     val registrationPresenter: RegistrationPresenter
     val ingredientUpdatePresenter: IngredientUpdatePresenter
+    val authCoordinator: AuthCoordinator
 }
 
 class DefaultAppContainer(
@@ -27,4 +30,6 @@ class DefaultAppContainer(
     override val inventoryPresenter: InventoryPresenter = InventoryPresenter(this.inventoryRepository)
     override val registrationPresenter: RegistrationPresenter = RegistrationPresenter(this.inventoryRepository)
     override val ingredientUpdatePresenter = IngredientUpdatePresenter(this.inventoryRepository)
+    override val authCoordinator: AuthCoordinator = context?.let(FirebaseAuthComposition::create)
+        ?: FirebaseAuthComposition.createUnavailable()
 }
