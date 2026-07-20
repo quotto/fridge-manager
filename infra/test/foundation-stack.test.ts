@@ -47,6 +47,28 @@ describe('FoundationStack', () => {
     });
   });
 
+  it.each(supportedEnvironments)('%s のログ暗号鍵を対象ロググループだけに許可する', (environment) => {
+    const app = new App();
+    const config = getEnvironmentConfig(environment);
+    const template = Template.fromStack(new FoundationStack(app, config.stackName, {
+      config,
+      env: { account: '123456789012', region: 'ap-northeast-1' },
+    }));
+
+    const key = Object.values(template.findResources('AWS::KMS::Key'))[0]!;
+    const statement = key.Properties.KeyPolicy.Statement.find((candidate: Record<string, unknown>) =>
+      (candidate.Principal as { Service?: string })?.Service === 'logs.ap-northeast-1.amazonaws.com');
+    expect(statement).toMatchObject({
+      Effect: 'Allow',
+      Action: ['kms:Encrypt', 'kms:Decrypt', 'kms:ReEncrypt*', 'kms:GenerateDataKey*', 'kms:DescribeKey'],
+      Resource: '*',
+    });
+    const encryptionContext = JSON.stringify(statement.Condition.ArnEquals['kms:EncryptionContext:aws:logs:arn']);
+    expect(encryptionContext).toContain('123456789012');
+    expect(encryptionContext).toContain(`log-group:/fridge-manager/${environment}/foundation`);
+    expect(encryptionContext).not.toContain(`${environment}/foundation*`);
+  });
+
   it.each(['dev', 'stg'] as const)('%s の一時基盤は削除可能にする', (environment) => {
     const app = new App();
     const config = getEnvironmentConfig(environment);
