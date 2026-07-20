@@ -22,6 +22,24 @@ class ExistingIngredientUpdateScreenTest {
     @get:Rule val composeRule = createComposeRule()
 
     @Test
+    fun 既存在庫更新から対象食材を指定して画像解析へ進める() {
+        val repository = UiUpdateRepository(ingredient())
+        var analysisIngredientId: String? = null
+        composeRule.setContent {
+            ExistingIngredientUpdateScreen(
+                ingredientId = "id",
+                presenter = IngredientUpdatePresenter(repository),
+                onBack = {},
+                onChanged = {},
+                onImageAnalysis = { analysisIngredientId = it },
+            )
+        }
+
+        composeRule.onNodeWithText("画像から数量を更新").assertIsDisplayed().performClick()
+        composeRule.runOnIdle { assertEquals("id", analysisIngredientId) }
+    }
+
+    @Test
     fun 数量更新は現在値入力方法更新後値を確認し削除は取消不能を明示する() {
         val repository = UiUpdateRepository(ingredient())
         composeRule.setContent {

@@ -8,6 +8,7 @@ import com.quotto.fridgemanager.domain.analysis.AnalysisApiRequest as DomainAnal
 import com.quotto.fridgemanager.domain.analysis.AnalysisApiResult as DomainAnalysisApiResult
 import com.quotto.fridgemanager.domain.analysis.AnalysisFailureKind as DomainAnalysisFailureKind
 import com.quotto.fridgemanager.domain.analysis.AnalysisCandidate
+import com.quotto.fridgemanager.domain.analysis.AnalysisCurrentItem
 import java.time.Instant
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -115,13 +116,19 @@ class AuthorizedAnalysisApiClient(
         }
     }
 
-    private fun requestBody(request: AnalysisApiRequest): String = JSON.encodeToString(
-        RequestDto(request.requestId, request.mode, ImageDto("image/jpeg", Base64.getEncoder().encodeToString(request.jpegBytes))),
+    private fun requestBody(request: AnalysisApiRequest): String = REQUEST_JSON.encodeToString(
+        RequestDto(
+            request.requestId,
+            request.mode,
+            ImageDto("image/jpeg", Base64.getEncoder().encodeToString(request.jpegBytes)),
+            request.currentItems?.map { CurrentItemDto(it.name, it.quantity, it.unit) },
+        ),
     )
 
     private companion object {
         const val REQUEST_TIMEOUT_MILLIS = 55_000L
         val JSON = Json { ignoreUnknownKeys = false; explicitNulls = true }
+        val REQUEST_JSON = Json { explicitNulls = false }
         val QUOTA_TYPES = setOf("SHORT", "DAILY", "MONTHLY", "GLOBAL", "BUDGET")
         val SERVICE_CODES = setOf("PROVIDER_UNAVAILABLE", "QUOTA_UNAVAILABLE", "SERVICE_STOPPED", "INTERNAL_ERROR")
         val QUANTITY = Regex("^(?:(?:0|[1-9][0-9]?)(?:\\.[0-9]{1,2})?|100)$")
@@ -130,8 +137,14 @@ class AuthorizedAnalysisApiClient(
     }
 }
 
-@Serializable private data class RequestDto(val requestId: String, val mode: String, val image: ImageDto)
+@Serializable private data class RequestDto(
+    val requestId: String,
+    val mode: String,
+    val image: ImageDto,
+    val currentItems: List<CurrentItemDto>? = null,
+)
 @Serializable private data class ImageDto(val mediaType: String, val base64: String)
+@Serializable private data class CurrentItemDto(val name: String, val quantity: String, val unit: String)
 @Serializable private data class SuccessDto(val requestId: String, val status: String, val candidates: List<CandidateDto>, val warnings: List<String>)
 @Serializable private data class CandidateDto(val name: String?, val quantity: String?, val unit: String?, val evidence: String, val requiresReview: Boolean)
 @Serializable private data class FailureDto(val requestId: String? = null, val status: String, val error: ErrorDto)

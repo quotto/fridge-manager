@@ -7,9 +7,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -27,6 +29,10 @@ import com.quotto.fridgemanager.domain.analysis.AnalysisApiRequest
 import com.quotto.fridgemanager.domain.analysis.AnalysisApiResult
 import com.quotto.fridgemanager.domain.analysis.AnalysisRequestException
 import com.quotto.fridgemanager.presentation.candidate.CandidateReviewPresenter
+import com.quotto.fridgemanager.presentation.inventory.AiUpdateCandidatePresenter
+import com.quotto.fridgemanager.domain.analysis.AnalysisCurrentItem
+import com.quotto.fridgemanager.domain.inventory.StoredIngredient
+import kotlinx.coroutines.CancellationException
 
 @Composable
 fun AppNavigation(
@@ -34,6 +40,7 @@ fun AppNavigation(
     registrationPresenter: RegistrationPresenter,
     ingredientUpdatePresenter: IngredientUpdatePresenter,
     candidateReviewPresenter: CandidateReviewPresenter,
+    aiUpdateCandidatePresenter: AiUpdateCandidatePresenter,
     analysisApiClient: AnalysisClient?,
     onReloadInventory: () -> Unit,
 ) {
@@ -104,6 +111,7 @@ fun AppNavigation(
                         onReloadInventory()
                         controller.popBackStack()
                     },
+                    onImageAnalysis = { controller.navigate(AppDestination.updateImageRoute(it)) },
                 )
             }
             composable(AppDestination.ImageAnalysis.route) {
@@ -121,6 +129,48 @@ fun AppNavigation(
                         }
                     },
                 )
+            }
+            composable(AppDestination.updateImagePattern) { entry ->
+                val ingredientId = entry.arguments?.getString("ingredientId").orEmpty()
+                val loaded by produceState<StoredIngredient?>(initialValue = null, ingredientId) {
+                    value = try {
+                        ingredientUpdatePresenter.load(ingredientId)
+                    } catch (error: Exception) {
+                        if (error is CancellationException) throw error
+                        null
+                    }
+                }
+                loaded?.let { ingredient ->
+                    ImageAnalysisScreen(
+                        candidateReviewPresenter = candidateReviewPresenter,
+                        onCandidatesValidated = {},
+                        updateIngredient = ingredient,
+                        aiUpdateCandidatePresenter = aiUpdateCandidatePresenter,
+                        onUpdateSaved = {
+                            onReloadInventory()
+                            controller.navigate(AppDestination.Inventory.route) {
+                                popUpTo(AppDestination.Inventory.route) { inclusive = false }
+                                launchSingleTop = true
+                            }
+                        },
+                        onManualRegistration = { controller.navigate(AppDestination.Registration.route) },
+                        onSendImage = { image, requestId, onUpload ->
+                            val client = analysisApiClient ?: throw AnalysisRequestException.unavailable()
+                            val currentItem = AnalysisCurrentItem(
+                                ingredient.name.value,
+                                ingredient.quantity.toString(),
+                                ingredient.unit.symbol,
+                            )
+                            when (val result = client.analyze(
+                                AnalysisApiRequest.singleItemUpdate(requestId, image.file.readBytes(), currentItem),
+                                onUpload,
+                            )) {
+                                is AnalysisApiResult.Success -> result
+                                is AnalysisApiResult.Failure -> throw AnalysisRequestException(result)
+                            }
+                        },
+                    )
+                } ?: Text("更新対象を読み込んでいます", modifier = Modifier.padding(24.dp))
             }
             composable(AppDestination.Settings.route) {
                 SettingsScreen()

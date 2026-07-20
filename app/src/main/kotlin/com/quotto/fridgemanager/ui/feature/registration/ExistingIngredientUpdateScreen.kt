@@ -50,6 +50,7 @@ fun ExistingIngredientUpdateScreen(
     presenter: IngredientUpdatePresenter,
     onBack: () -> Unit,
     onChanged: () -> Unit,
+    onImageAnalysis: (String) -> Unit = {},
 ) {
     var ingredient by remember(ingredientId) { mutableStateOf<StoredIngredient?>(null) }
     var loaded by remember(ingredientId) { mutableStateOf(false) }
@@ -70,7 +71,7 @@ fun ExistingIngredientUpdateScreen(
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(title = "在庫を更新", onBack = onBack)
         ingredient?.let {
-            IngredientUpdateContent(it, presenter, onChanged)
+            IngredientUpdateContent(it, presenter, onChanged, onImageAnalysis)
         } ?: Text(
             if (failed) "在庫を読み込めませんでした。戻って再試行してください"
             else if (loaded) "対象の在庫が見つかりません。戻って選び直してください" else "在庫を読み込んでいます",
@@ -84,6 +85,7 @@ private fun IngredientUpdateContent(
     ingredient: StoredIngredient,
     presenter: IngredientUpdatePresenter,
     onChanged: () -> Unit,
+    onImageAnalysis: (String) -> Unit,
 ) {
     var name by rememberSaveable(ingredient.id) { mutableStateOf(ingredient.name.value) }
     var quantity by rememberSaveable(ingredient.id) { mutableStateOf(ingredient.quantity.toString()) }
@@ -112,6 +114,9 @@ private fun IngredientUpdateContent(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("現在値: ${ingredient.quantity} ${ingredient.unit.symbol}")
+        OutlinedButton(onClick = { onImageAnalysis(ingredient.id) }, modifier = Modifier.fillMaxWidth()) {
+            Text("画像から数量を更新")
+        }
         Text("食材情報を編集")
         OutlinedTextField(name, { name = it }, label = { Text("食材名（必須）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(quantity, { quantity = it }, label = { Text("在庫数（必須）") }, singleLine = true,
