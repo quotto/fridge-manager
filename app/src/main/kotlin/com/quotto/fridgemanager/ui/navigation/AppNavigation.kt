@@ -26,12 +26,14 @@ import com.quotto.fridgemanager.domain.analysis.AnalysisClient
 import com.quotto.fridgemanager.domain.analysis.AnalysisApiRequest
 import com.quotto.fridgemanager.domain.analysis.AnalysisApiResult
 import com.quotto.fridgemanager.domain.analysis.AnalysisRequestException
+import com.quotto.fridgemanager.presentation.candidate.CandidateReviewPresenter
 
 @Composable
 fun AppNavigation(
     inventoryState: InventoryUiState,
     registrationPresenter: RegistrationPresenter,
     ingredientUpdatePresenter: IngredientUpdatePresenter,
+    candidateReviewPresenter: CandidateReviewPresenter,
     analysisApiClient: AnalysisClient?,
     onReloadInventory: () -> Unit,
 ) {
@@ -106,6 +108,8 @@ fun AppNavigation(
             }
             composable(AppDestination.ImageAnalysis.route) {
                 ImageAnalysisScreen(
+                    candidateReviewPresenter = candidateReviewPresenter,
+                    onCandidatesValidated = { /* #31 が原子的な一括確定を接続する境界。 */ },
                     onManualRegistration = {
                         controller.navigate(AppDestination.Registration.route)
                     },

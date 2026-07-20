@@ -29,6 +29,7 @@ fun FridgeManagerApp(container: AppContainer) {
             inventoryState = inventoryState,
             registrationPresenter = container.registrationPresenter,
             ingredientUpdatePresenter = container.ingredientUpdatePresenter,
+            candidateReviewPresenter = container.candidateReviewPresenter,
             analysisApiClient = container.analysisApiClient,
             onReloadInventory = { subscriptionKey += 1 },
         )

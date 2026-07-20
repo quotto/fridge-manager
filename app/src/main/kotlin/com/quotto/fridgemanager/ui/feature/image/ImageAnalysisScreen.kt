@@ -44,6 +44,8 @@ import com.quotto.fridgemanager.image.CameraImageStore
 import com.quotto.fridgemanager.image.PreprocessedImage
 import com.quotto.fridgemanager.presentation.image.ImageAnalysisState
 import com.quotto.fridgemanager.ui.component.ScreenHeader
+import com.quotto.fridgemanager.presentation.candidate.CandidateReviewPresenter
+import com.quotto.fridgemanager.presentation.candidate.ReviewedCandidate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -58,6 +60,8 @@ typealias ImageInputAsset = com.quotto.fridgemanager.image.ImageInputAsset
 @Composable
 fun ImageAnalysisScreen(
     onManualRegistration: () -> Unit,
+    candidateReviewPresenter: CandidateReviewPresenter,
+    onCandidatesValidated: (List<ReviewedCandidate>) -> Unit,
     onSendImage: suspend (PreprocessedImage, String, () -> Unit) -> com.quotto.fridgemanager.domain.analysis.AnalysisApiResult.Success,
 ) {
     val context = LocalContext.current
@@ -129,6 +133,14 @@ fun ImageAnalysisScreen(
     }
 
     val currentAnalysisState = analysisState
+    if (currentAnalysisState is ImageAnalysisState.Succeeded && currentAnalysisState.result != null) {
+        CandidateReviewScreen(
+            result = currentAnalysisState.result,
+            presenter = candidateReviewPresenter,
+            onValidated = onCandidatesValidated,
+        )
+        return
+    }
     if (currentAnalysisState is ImageAnalysisState.Ready || currentAnalysisState is ImageAnalysisState.Sending || currentAnalysisState is ImageAnalysisState.Analyzing ||
         (currentAnalysisState is ImageAnalysisState.Failed && currentAnalysisState.image != null)
     ) {
@@ -137,7 +149,6 @@ fun ImageAnalysisScreen(
             is ImageAnalysisState.Sending -> state.image
             is ImageAnalysisState.Analyzing -> state.image
             is ImageAnalysisState.Failed -> checkNotNull(state.image)
-            else -> error("unreachable")
         }
         ImagePreviewContent(
             image = preview,
