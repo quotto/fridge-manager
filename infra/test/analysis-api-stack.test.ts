@@ -19,6 +19,23 @@ describe('AnalysisApiStack', () => {
     expect(rendered).not.toContain('./schemas/analysis-request.schema.json');
   });
 
+  it('nullableな候補フィールドをAPI Gateway互換schemaへ変換する', () => {
+    const restApi = Object.values(template.findResources('AWS::ApiGateway::RestApi'))[0]!;
+    const schemas = (restApi.Properties.Body.components as { schemas: Record<string, unknown> }).schemas;
+    const visit = (value: unknown): void => {
+      if (Array.isArray(value)) {
+        value.forEach(visit);
+        return;
+      }
+      if (!value || typeof value !== 'object') return;
+      const record = value as Record<string, unknown>;
+      if (Array.isArray(record.enum)) expect(record.enum).not.toContain(null);
+      Object.values(record).forEach(visit);
+    };
+    visit(schemas.AnalysisResponse);
+    expect(JSON.stringify(schemas.AnalysisResponse)).toContain('"nullable":true');
+  });
+
   it('cacheなしREQUEST authorizerで双方のtoken検証前に解析Lambdaへ到達させない', () => {
     const rendered = JSON.stringify(template.toJSON());
     expect(rendered).toContain('method.request.header.Authorization,method.request.header.X-Firebase-AppCheck');

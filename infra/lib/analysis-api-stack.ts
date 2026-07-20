@@ -36,6 +36,11 @@ function apiGatewaySchema(value: unknown): unknown {
       if (child.includes('null')) result.nullable = true;
       continue;
     }
+    if (key === 'enum' && Array.isArray(child) && child.includes(null)) {
+      result.enum = child.filter((item) => item !== null).map(apiGatewaySchema);
+      result.nullable = true;
+      continue;
+    }
     result[key] = apiGatewaySchema(child);
   }
   const definitions = (value as Record<string, unknown>).$defs;
