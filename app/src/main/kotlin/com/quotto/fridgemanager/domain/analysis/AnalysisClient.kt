@@ -1,6 +1,42 @@
 package com.quotto.fridgemanager.domain.analysis
 
-data class AnalysisApiRequest(val requestId: String, val mode: String, val jpegBytes: ByteArray)
+data class AnalysisCurrentItem(val name: String, val quantity: String, val unit: String) {
+    init {
+        require(name == name.trim() && name.codePointCount(0, name.length) in 1..30)
+        require(name.codePoints().noneMatch { it in 0x00..0x1f || it in 0x7f..0x9f })
+        com.quotto.fridgemanager.domain.inventory.IngredientName.from(name)
+        com.quotto.fridgemanager.domain.inventory.InventoryQuantity.from(quantity)
+        com.quotto.fridgemanager.domain.inventory.InventoryUnit.fromSymbol(unit)
+    }
+}
+
+data class AnalysisApiRequest(
+    val requestId: String,
+    val mode: String,
+    val jpegBytes: ByteArray,
+    val currentItems: List<AnalysisCurrentItem>? = null,
+) {
+    init {
+        require(
+            (mode == "new" && currentItems == null) ||
+                (mode == "update" && currentItems?.size in 1..30),
+        )
+        require(jpegBytes.isNotEmpty())
+    }
+
+    companion object {
+        fun singleItemUpdate(
+            requestId: String,
+            jpegBytes: ByteArray,
+            currentItem: AnalysisCurrentItem,
+        ): AnalysisApiRequest = AnalysisApiRequest(
+            requestId = requestId,
+            mode = "update",
+            jpegBytes = jpegBytes,
+            currentItems = listOf(currentItem),
+        )
+    }
+}
 
 data class AnalysisCandidate(
     val name: String?, val quantity: String?, val unit: String?, val evidence: String, val requiresReview: Boolean,

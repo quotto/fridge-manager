@@ -9,6 +9,7 @@ import com.quotto.fridgemanager.domain.auth.AuthCoordinator
 import com.quotto.fridgemanager.domain.inventory.InventoryRepository
 import com.quotto.fridgemanager.presentation.inventory.InventoryPresenter
 import com.quotto.fridgemanager.presentation.inventory.IngredientUpdatePresenter
+import com.quotto.fridgemanager.presentation.inventory.AiUpdateCandidatePresenter
 import com.quotto.fridgemanager.presentation.registration.RegistrationPresenter
 import com.quotto.fridgemanager.presentation.candidate.CandidateReviewPresenter
 import com.quotto.fridgemanager.BuildConfig
@@ -23,6 +24,7 @@ interface AppContainer {
     val registrationPresenter: RegistrationPresenter
     val ingredientUpdatePresenter: IngredientUpdatePresenter
     val candidateReviewPresenter: CandidateReviewPresenter
+    val aiUpdateCandidatePresenter: AiUpdateCandidatePresenter
     val authCoordinator: AuthCoordinator
     val analysisApiClient: AnalysisClient?
 }
@@ -38,6 +40,7 @@ class DefaultAppContainer(
     override val registrationPresenter: RegistrationPresenter = RegistrationPresenter(this.inventoryRepository)
     override val ingredientUpdatePresenter = IngredientUpdatePresenter(this.inventoryRepository)
     override val candidateReviewPresenter = CandidateReviewPresenter(this.inventoryRepository)
+    override val aiUpdateCandidatePresenter = AiUpdateCandidatePresenter(this.inventoryRepository)
     override val authCoordinator: AuthCoordinator = context?.let(FirebaseAuthComposition::create)
         ?: FirebaseAuthComposition.createUnavailable()
     override val analysisApiClient: AnalysisClient? = BuildConfig.ANALYSIS_API_BASE_URL
