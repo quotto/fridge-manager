@@ -80,8 +80,21 @@ describe('AnalysisApiStack', () => {
   });
 
   it('Lambdaを58秒、Regional REST統合を60秒にする', () => {
-    template.hasResourceProperties('AWS::Lambda::Function', { Timeout: 58, ReservedConcurrentExecutions: 5 });
+    template.hasResourceProperties('AWS::Lambda::Function', { Timeout: 58 });
+    const analysisFunction = Object.values(template.findResources('AWS::Lambda::Function'))
+      .find((resource) => resource.Properties.FunctionName === 'fridge-manager-dev-analysis')!;
+    expect(analysisFunction.Properties).not.toHaveProperty('ReservedConcurrentExecutions');
     expect(JSON.stringify(template.toJSON())).toContain('60000');
+  });
+
+  it('prodの解析Lambdaだけ予約同時実行5で費用を保護する', () => {
+    const prodTemplate = Template.fromStack(new AnalysisApiStack(new App(), 'ProdAnalysisApi', {
+      config: getEnvironmentConfig('prod'),
+    }));
+    prodTemplate.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'fridge-manager-prod-analysis',
+      ReservedConcurrentExecutions: 5,
+    });
   });
 
   it('全体8000回、WAF 10回/分、50 USD予算と50/80/100通知を構成する', () => {

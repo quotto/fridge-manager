@@ -129,7 +129,7 @@ export class AnalysisApiStack extends Stack {
       functionName: `fridge-manager-${props.config.environment}-analysis`, logGroup: analysisLogGroup, role: lambdaRole('Analysis', analysisLogGroup),
       entry: resolve('infra/lambda/index.ts'), handler: 'main', runtime: lambda.Runtime.NODEJS_22_X,
       timeout: Duration.seconds(58), memorySize: 1024,
-      reservedConcurrentExecutions: 5,
+      ...(props.config.environment === 'prod' ? { reservedConcurrentExecutions: 5 } : {}),
       environment: {
         IDEMPOTENCY_TABLE_NAME: table.tableName,
         QUOTA_SHORT_LIMIT: shortQuotaLimit.valueAsString,
