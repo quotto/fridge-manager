@@ -135,6 +135,24 @@ describe('AnalysisApiStack', () => {
     expect(rendered).not.toContain('dynamodb:BatchWriteItem');
   });
 
+  it('Nova 2 Lite JP Geoだけを呼び出し、起動時に保持モードを確認できる', () => {
+    const analysisFunction = Object.values(template.findResources('AWS::Lambda::Function'))
+      .find((resource) => resource.Properties.FunctionName === 'fridge-manager-dev-analysis')!;
+    expect(analysisFunction.Properties.Environment.Variables).toMatchObject({
+      BEDROCK_REGION: 'ap-northeast-1',
+      BEDROCK_MODEL_ID: 'jp.amazon.nova-2-lite-v1:0',
+      BEDROCK_MODEL_ALLOWED_MODES: 'none',
+    });
+    const policies = JSON.stringify(template.findResources('AWS::IAM::Policy'));
+    expect(policies).toContain('bedrock:InvokeModel');
+    expect(policies).toContain('bedrock:GetAccountDataRetention');
+    expect(policies).toContain('inference-profile/jp.amazon.nova-2-lite-v1:0');
+    expect(policies).toContain('foundation-model/amazon.nova-2-lite-v1:0');
+    expect(policies).toContain('ap-northeast-3');
+    expect(policies).toContain('bedrock:InferenceProfileArn');
+    expect(policies).not.toContain('foundation-model/*');
+  });
+
   it('Budget通知SNSと停止DLQをローテーション有効な用途別CMKで暗号化する', () => {
     template.resourceCountIs('AWS::KMS::Key', 3);
     template.allResourcesProperties('AWS::KMS::Key', { EnableKeyRotation: true });

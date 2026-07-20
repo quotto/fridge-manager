@@ -13,6 +13,8 @@
     "cdk:synth": "cdk synth"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock": "^3.1090.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1090.0",
     "@aws-sdk/client-dynamodb": "^3.1090.0",
     "@types/aws-lambda": "^8.10.162",
     "ajv": "^8.20.0",

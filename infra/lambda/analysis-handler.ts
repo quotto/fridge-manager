@@ -48,6 +48,13 @@ ajv.addSchema(candidateSchema);
 const validateRequestSchema = ajv.compile(requestSchema);
 const validateResponseSchema = ajv.compile(responseSchema);
 
+function containsControlCharacter(value: string): boolean {
+  return [...value].some((character) => {
+    const codePoint = character.codePointAt(0);
+    return codePoint !== undefined && (codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f));
+  });
+}
+
 function ownKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
   return Object.keys(value).every((key) => allowed.includes(key));
 }
@@ -79,6 +86,7 @@ function parseRequest(body: string | null | undefined): AnalysisRequest {
       const candidate = item as Record<string, unknown>;
       if (!ownKeys(candidate, ['name', 'quantity', 'unit']) || typeof candidate.name !== 'string' ||
           candidate.name.trim().length < 1 || [...candidate.name.trim()].length > 30 ||
+          containsControlCharacter(candidate.name) ||
           typeof candidate.quantity !== 'string' || !QUANTITY.test(candidate.quantity) ||
           typeof candidate.unit !== 'string' || !UNITS.has(candidate.unit)) throw new AnalysisError('INVALID_REQUEST', 400);
     }
