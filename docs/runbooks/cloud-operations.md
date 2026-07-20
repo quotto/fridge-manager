@@ -13,8 +13,9 @@ GitHub Environments `staging`、`production-plan`、`production` を作成し、
 - `AWS_DEPLOY_ROLE_ARN`, `AWS_PLAN_ROLE_ARN`, `AWS_OPERATIONS_ROLE_ARN`, `PROMOTION_ARTIFACT_BUCKET`
 - `FIREBASE_PROJECT_ID`, `FIREBASE_PROJECT_NUMBER`, `FIREBASE_APP_IDS`
 - `GOOGLE_WIF_AUDIENCE`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`
+- Secret: `OPERATIONS_NOTIFICATION_EMAIL`
 
-AWSアカウント共通の予算メール通知はアカウント管理側で設定し、Environmentへメールアドレスを保存しない。アプリstackは50/80/100%のSNS連携と100%時の自動停止を管理し、既存メール通知を重複作成しない。
+`OPERATIONS_NOTIFICATION_EMAIL` にはAWSアカウントで確認済みの既存予算通知先を再利用し、Repository variableやログへ値を出さない。アプリstackは要件固有の50/80/100%予算通知、Cost Anomaly、DLQ、API/Lambda障害をこの通知先へ送り、100%時は自動停止も実行する。SNSの購読確認メールが届いた場合は、各環境の購読を承認する。
 
 長期AWS access keyは登録しない。GitHub OIDC roleのtrustは対象repository、`main`、対応Environmentの`sub`完全一致に限定する。plan roleはCloudFormation read、release prefixの`S3 GetObject`と必要なKMS Decryptだけを許可する。deploy roleは対象環境のCDK bootstrap roleへのassumeとrelease artifact書込だけを許可し、operations roleは対象環境のcontrol Lambda `InvokeFunction`、control tableの`GetItem`、対象stackの`DescribeStacks`と隔離rollback drill stackだけを許可する。stg/prodのroleとaccountは分離する。
 
