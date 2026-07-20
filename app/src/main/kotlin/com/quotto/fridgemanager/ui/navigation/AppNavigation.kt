@@ -22,12 +22,17 @@ import com.quotto.fridgemanager.ui.feature.inventory.InventoryScreen
 import com.quotto.fridgemanager.ui.feature.registration.RegistrationScreen
 import com.quotto.fridgemanager.ui.feature.registration.ExistingIngredientUpdateScreen
 import com.quotto.fridgemanager.ui.feature.settings.SettingsScreen
+import com.quotto.fridgemanager.domain.analysis.AnalysisClient
+import com.quotto.fridgemanager.domain.analysis.AnalysisApiRequest
+import com.quotto.fridgemanager.domain.analysis.AnalysisApiResult
+import com.quotto.fridgemanager.domain.analysis.AnalysisRequestException
 
 @Composable
 fun AppNavigation(
     inventoryState: InventoryUiState,
     registrationPresenter: RegistrationPresenter,
     ingredientUpdatePresenter: IngredientUpdatePresenter,
+    analysisApiClient: AnalysisClient?,
     onReloadInventory: () -> Unit,
 ) {
     val controller = rememberNavController()
@@ -104,8 +109,12 @@ fun AppNavigation(
                     onManualRegistration = {
                         controller.navigate(AppDestination.Registration.route)
                     },
-                    onSendImage = {
-                        // #26 がAPI送信を接続する。呼出完了後は画面側が成果物を破棄する。
+                    onSendImage = { image, requestId, onUpload ->
+                        val client = analysisApiClient ?: throw AnalysisRequestException.unavailable()
+                        when (val result = client.analyze(AnalysisApiRequest(requestId, "new", image.file.readBytes()), onUpload)) {
+                            is AnalysisApiResult.Success -> result
+                            is AnalysisApiResult.Failure -> throw AnalysisRequestException(result)
+                        }
                     },
                 )
             }

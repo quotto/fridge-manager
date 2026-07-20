@@ -11,14 +11,22 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import com.quotto.fridgemanager.domain.analysis.AnalysisRequestException
+import com.quotto.fridgemanager.domain.analysis.AnalysisApiResult
 
 sealed interface ImageAnalysisState {
     data object Idle : ImageAnalysisState
     data object Processing : ImageAnalysisState
     data class Ready(val image: PreprocessedImage) : ImageAnalysisState
     data class Sending(val image: PreprocessedImage) : ImageAnalysisState
-    data object Succeeded : ImageAnalysisState
-    data class Failed(val message: String) : ImageAnalysisState
+    data class Analyzing(val image: PreprocessedImage) : ImageAnalysisState
+    data class Succeeded(val result: AnalysisApiResult.Success? = null) : ImageAnalysisState
+    data class Failed(
+        val message: String,
+        val image: PreprocessedImage? = null,
+        val retryAt: String? = null,
+        val quotaType: String? = null,
+    ) : ImageAnalysisState
 }
 
 /** 前処理済み画像の唯一の所有者。送信コールバックは呼出中だけ画像を参照できる。 */
@@ -26,7 +34,7 @@ class ImageAnalysisSession<Input : Closeable>(
     private val scope: CoroutineScope,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val process: suspend (Input) -> PreprocessedImage,
-    private val sendImage: suspend (PreprocessedImage) -> Unit,
+    private val sendImage: suspend (PreprocessedImage, () -> Unit) -> AnalysisApiResult.Success?,
 ) : Closeable {
     private val mutableState = MutableStateFlow<ImageAnalysisState>(ImageAnalysisState.Idle)
     val state: StateFlow<ImageAnalysisState> = mutableState.asStateFlow()
@@ -83,13 +91,30 @@ class ImageAnalysisSession<Input : Closeable>(
         sendInFlight = true
         mutableState.value = ImageAnalysisState.Sending(image)
         job = scope.launch(dispatcher) {
+            var retainForRetry = false
             try {
-                sendImage(image)
+                val result = sendImage(image) {
+                    synchronized(this@ImageAnalysisSession) {
+                        if (!closed && request == generation) mutableState.value = ImageAnalysisState.Analyzing(image)
+                    }
+                }
                 synchronized(this@ImageAnalysisSession) {
-                    if (!closed && request == generation) mutableState.value = ImageAnalysisState.Succeeded
+                    if (!closed && request == generation) mutableState.value = ImageAnalysisState.Succeeded(result)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (failure: AnalysisRequestException) {
+                retainForRetry = true
+                synchronized(this@ImageAnalysisSession) {
+                    if (!closed && request == generation) {
+                        mutableState.value = ImageAnalysisState.Failed(
+                            message = failure.userMessage,
+                            image = image,
+                            retryAt = failure.failure.retryAt,
+                            quotaType = failure.failure.quotaType,
+                        )
+                    }
+                }
             } catch (_: Exception) {
                 synchronized(this@ImageAnalysisSession) {
                     if (!closed && request == generation) {
@@ -97,9 +122,9 @@ class ImageAnalysisSession<Input : Closeable>(
                     }
                 }
             } finally {
-                completeSend(image, request)
+                completeSend(image, request, release = !retainForRetry)
             }
-        }.also { sendJob -> sendJob.invokeOnCompletion { completeSend(image, request) } }
+        }.also { sendJob -> sendJob.invokeOnCompletion { completeSend(image, request, release = true) } }
     }
 
     @Synchronized
@@ -111,6 +136,9 @@ class ImageAnalysisSession<Input : Closeable>(
         if (!sending) {
             job = null
             releaseImage()
+            mutableState.value = ImageAnalysisState.Idle
+        } else {
+            // HTTP境界が取消を観測するまでfileは保持するが、画面は直ちに取消状態へ戻す。
             mutableState.value = ImageAnalysisState.Idle
         }
     }
@@ -132,9 +160,10 @@ class ImageAnalysisSession<Input : Closeable>(
     }
 
     @Synchronized
-    private fun completeSend(image: PreprocessedImage, request: Long) {
+    private fun completeSend(image: PreprocessedImage, request: Long, release: Boolean) {
         if (!sendInFlight) return
-        if (ownedImage === image) {
+        val mustRelease = release || closed || request != generation
+        if (mustRelease && ownedImage === image) {
             ownedImage = null
             image.close()
         }
