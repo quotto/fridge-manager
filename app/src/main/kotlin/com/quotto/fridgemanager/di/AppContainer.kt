@@ -10,6 +10,10 @@ import com.quotto.fridgemanager.domain.inventory.InventoryRepository
 import com.quotto.fridgemanager.presentation.inventory.InventoryPresenter
 import com.quotto.fridgemanager.presentation.inventory.IngredientUpdatePresenter
 import com.quotto.fridgemanager.presentation.registration.RegistrationPresenter
+import com.quotto.fridgemanager.BuildConfig
+import com.quotto.fridgemanager.data.remote.AuthorizedAnalysisApiClient
+import com.quotto.fridgemanager.data.remote.UrlConnectionAnalysisHttpTransport
+import com.quotto.fridgemanager.domain.analysis.AnalysisClient
 
 /** アプリ全体の依存を生成するComposition Root。 */
 interface AppContainer {
@@ -18,6 +22,7 @@ interface AppContainer {
     val registrationPresenter: RegistrationPresenter
     val ingredientUpdatePresenter: IngredientUpdatePresenter
     val authCoordinator: AuthCoordinator
+    val analysisApiClient: AnalysisClient?
 }
 
 class DefaultAppContainer(
@@ -32,4 +37,7 @@ class DefaultAppContainer(
     override val ingredientUpdatePresenter = IngredientUpdatePresenter(this.inventoryRepository)
     override val authCoordinator: AuthCoordinator = context?.let(FirebaseAuthComposition::create)
         ?: FirebaseAuthComposition.createUnavailable()
+    override val analysisApiClient: AnalysisClient? = BuildConfig.ANALYSIS_API_BASE_URL
+        .takeIf(String::isNotBlank)
+        ?.let { AuthorizedAnalysisApiClient(authCoordinator, UrlConnectionAnalysisHttpTransport(it)) }
 }

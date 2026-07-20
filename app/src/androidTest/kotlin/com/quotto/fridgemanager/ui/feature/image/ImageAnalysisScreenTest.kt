@@ -12,6 +12,7 @@ import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
+import com.quotto.fridgemanager.presentation.image.ImageAnalysisState
 
 class ImageAnalysisScreenTest {
     @get:Rule val composeRule = createComposeRule()
@@ -107,15 +108,37 @@ class ImageAnalysisScreenTest {
     }
 
     @Test
-    fun `送信中は画像変更と二重送信を無効化する`() {
+    fun `送信中は二重送信を無効化し取消できる`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val image = PreprocessedImage(File.createTempFile("preview-test-", ".jpg", context.cacheDir), 640, 480, false)
+        var cancellations = 0
         composeRule.setContent {
-            ImagePreviewContent(image, onSend = {}, onReselect = {}, sending = true)
+            ImagePreviewContent(image, onSend = {}, onReselect = { cancellations++ }, sending = true)
         }
         composeRule.onNodeWithText("画像を送信しています").assertIsDisplayed()
         composeRule.onNodeWithText("この画像を送信する").assertIsNotEnabled()
-        composeRule.onNodeWithText("選び直す").assertIsNotEnabled()
+        composeRule.onNodeWithText("キャンセル").performClick()
+        assertEquals(1, cancellations)
+        image.close()
+    }
+
+    @Test
+    fun `上限失敗は種別と再利用日時と全代替導線を表示する`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val image = PreprocessedImage(File.createTempFile("preview-test-", ".jpg", context.cacheDir), 640, 480, false)
+        composeRule.setContent {
+            ImagePreviewContent(
+                image, onSend = {}, onReselect = {},
+                failure = ImageAnalysisState.Failed(
+                    "AI解析の利用上限に達しました", image, "2026-07-21T15:00:00Z", "DAILY",
+                ),
+            )
+        }
+        composeRule.onNodeWithText("上限種別: 1日").assertIsDisplayed()
+        composeRule.onNodeWithText("再利用日時: 2026-07-21T15:00:00Z").assertIsDisplayed()
+        composeRule.onNodeWithText("再試行する").assertIsDisplayed()
+        composeRule.onNodeWithText("選び直す").assertIsDisplayed()
+        composeRule.onNodeWithText("手動で登録する").assertIsDisplayed()
         image.close()
     }
 }

@@ -58,7 +58,7 @@ typealias ImageInputAsset = com.quotto.fridgemanager.image.ImageInputAsset
 @Composable
 fun ImageAnalysisScreen(
     onManualRegistration: () -> Unit,
-    onSendImage: suspend (PreprocessedImage) -> Unit,
+    onSendImage: suspend (PreprocessedImage, String, () -> Unit) -> com.quotto.fridgemanager.domain.analysis.AnalysisApiResult.Success,
 ) {
     val context = LocalContext.current
     val analysis: ImageAnalysisViewModel = viewModel(
@@ -128,17 +128,25 @@ fun ImageAnalysisScreen(
         }
     }
 
-    if (analysisState is ImageAnalysisState.Ready || analysisState is ImageAnalysisState.Sending) {
-        val preview = when (val state = analysisState) {
+    val currentAnalysisState = analysisState
+    if (currentAnalysisState is ImageAnalysisState.Ready || currentAnalysisState is ImageAnalysisState.Sending || currentAnalysisState is ImageAnalysisState.Analyzing ||
+        (currentAnalysisState is ImageAnalysisState.Failed && currentAnalysisState.image != null)
+    ) {
+        val preview = when (val state = currentAnalysisState) {
             is ImageAnalysisState.Ready -> state.image
             is ImageAnalysisState.Sending -> state.image
+            is ImageAnalysisState.Analyzing -> state.image
+            is ImageAnalysisState.Failed -> checkNotNull(state.image)
             else -> error("unreachable")
         }
         ImagePreviewContent(
             image = preview,
             onSend = analysis::send,
             onReselect = analysis::cancel,
-            sending = analysisState is ImageAnalysisState.Sending,
+            sending = currentAnalysisState is ImageAnalysisState.Sending || currentAnalysisState is ImageAnalysisState.Analyzing,
+            analyzing = currentAnalysisState is ImageAnalysisState.Analyzing,
+            failure = currentAnalysisState as? ImageAnalysisState.Failed,
+            onManualRegistration = onManualRegistration,
         )
         return
     }
@@ -238,7 +246,7 @@ fun ImageInputContent(
             when (analysisState) {
                 ImageAnalysisState.Processing -> Text("送信画像を準備しています")
                 is ImageAnalysisState.Failed -> Text(analysisState.message)
-                ImageAnalysisState.Succeeded -> Text("画像の送信が完了しました")
+                is ImageAnalysisState.Succeeded -> Text("${analysisState.result?.candidates?.size ?: 0}件の解析候補を取得しました")
                 else -> Unit
             }
             if (cameraMessage == CameraMessage.Unavailable) {
@@ -279,6 +287,9 @@ fun ImagePreviewContent(
     onSend: () -> Unit,
     onReselect: () -> Unit,
     sending: Boolean = false,
+    analyzing: Boolean = false,
+    failure: ImageAnalysisState.Failed? = null,
+    onManualRegistration: () -> Unit = {},
 ) {
     val bitmap by produceState<Bitmap?>(null, image.file) {
         value = withContext(Dispatchers.IO) { decodePreview(image.file.path) }
@@ -307,12 +318,22 @@ fun ImagePreviewContent(
                     },
                 )
             }
-            if (sending) Text("画像を送信しています")
-            Button(onClick = onSend, enabled = !sending && bitmap != null, modifier = Modifier.fillMaxWidth()) {
-                Text("この画像を送信する")
+            if (sending) Text(if (analyzing) "AIで画像を解析しています" else "画像を送信しています")
+            failure?.let {
+                Text(it.message)
+                it.quotaType?.let { quota -> Text("上限種別: ${quotaLabel(quota)}") }
+                it.retryAt?.let { retryAt -> Text("再利用日時: $retryAt") }
             }
-            OutlinedButton(onClick = onReselect, enabled = !sending, modifier = Modifier.fillMaxWidth()) {
-                Text("選び直す")
+            Button(onClick = onSend, enabled = !sending && bitmap != null, modifier = Modifier.fillMaxWidth()) {
+                Text(if (failure != null) "再試行する" else "この画像を送信する")
+            }
+            OutlinedButton(onClick = onReselect, modifier = Modifier.fillMaxWidth()) {
+                Text(if (sending) "キャンセル" else "選び直す")
+            }
+            if (failure != null) {
+                OutlinedButton(onClick = onManualRegistration, modifier = Modifier.fillMaxWidth()) {
+                    Text("手動で登録する")
+                }
             }
         }
     }
@@ -328,6 +349,15 @@ private fun decodePreview(path: String): Bitmap? {
         inSampleSize = sample
         inPreferredConfig = Bitmap.Config.ARGB_8888
     })
+}
+
+private fun quotaLabel(value: String): String = when (value) {
+    "SHORT" -> "短時間"
+    "DAILY" -> "1日"
+    "MONTHLY" -> "1か月"
+    "GLOBAL" -> "全体"
+    "BUDGET" -> "予算"
+    else -> "不明"
 }
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
