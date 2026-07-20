@@ -203,7 +203,7 @@ export class AnalysisApiStack extends Stack {
     const anomalyMonitor = new ce.CfnAnomalyMonitor(this, 'CostAnomalyMonitor', { monitorName: `fridge-manager-${props.config.environment}`, monitorType: 'DIMENSIONAL', monitorDimension: 'SERVICE' });
     const anomalySubscription = new ce.CfnAnomalySubscription(this, 'CostAnomalySubscription', {
       subscriptionName: `fridge-manager-${props.config.environment}`, frequency: 'IMMEDIATE', monitorArnList: [anomalyMonitor.attrMonitorArn],
-      subscribers: [{ type: 'SNS', address: alertTopic.topicArn }], thresholdExpression: JSON.stringify({ And: [{ Dimensions: { Key: 'ANOMALY_TOTAL_IMPACT_ABSOLUTE', MatchOptions: ['GREATER_THAN_OR_EQUAL'], Values: [anomalyThresholdUsd.valueAsString] } }] }),
+      subscribers: [{ type: 'SNS', address: alertTopic.topicArn }], thresholdExpression: JSON.stringify({ Dimensions: { Key: 'ANOMALY_TOTAL_IMPACT_ABSOLUTE', MatchOptions: ['GREATER_THAN_OR_EQUAL'], Values: [anomalyThresholdUsd.valueAsString] } }),
     });
     if (costPolicyResult.policyDependable) anomalySubscription.node.addDependency(costPolicyResult.policyDependable);
 
