@@ -16,6 +16,10 @@ GitHub Environments `staging`、`production-plan`、`production` を作成し、
 
 長期AWS access keyは登録しない。GitHub OIDC roleのtrustは対象repository、`main`、対応Environmentの`sub`完全一致に限定する。plan roleはCloudFormation read、release prefixの`S3 GetObject`と必要なKMS Decryptだけを許可する。deploy roleは対象環境のCDK bootstrap roleへのassumeとrelease artifact書込だけを許可し、operations roleは対象環境のcontrol Lambda `InvokeFunction`、control tableの`GetItem`、対象stackの`DescribeStacks`と隔離rollback drill stackだけを許可する。stg/prodのroleとaccountは分離する。
 
+Firebase検証LambdaからGoogle APIへは環境別Workload Identity Poolを使用し、サービスアカウント鍵を発行しない。providerのAWS account条件に加えて、`attribute.aws_role`をCloudFormation output `FirebaseAuthorizerRoleArn`に対応する固定role名へ完全一致させる。サービスアカウントには、そのroleのexact principalSetへ`roles/iam.workloadIdentityUser`だけを付与し、project全体・pool全体・AWS account全体を許可しない。`roles/iam.serviceAccountTokenCreator`は署名権限を含むため付与しない。サービスアカウント自身には`roles/firebaseappcheck.tokenVerifier`だけを付与する。
+
+初回構築では、CDK synthで環境別role名を確認し、Google WIF providerとサービスアカウントbindingを先に作成してからAWS stackをdeployする。既存stackでrole名を変更する場合は、新旧roleを一時的にexact列挙し、新roleでtoken exchange成功を確認してから旧bindingを削除する。prefix wildcardによる切替は行わない。
+
 ## デプロイと昇格
 
 1. `main` のCI成功を契機に `Deploy` workflowがCI検証済みSHAをcheckoutする。

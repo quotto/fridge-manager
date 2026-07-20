@@ -105,9 +105,10 @@ export class AnalysisApiStack extends Stack {
       role.addToPolicy(new iam.PolicyStatement({ actions: ['logs:CreateLogStream', 'logs:PutLogEvents'], resources: [`${logGroup.logGroupArn}:*`] }));
       return role;
     };
+    const authorizerRole = lambdaRole('Authorizer', authorizerLogGroup, `${props.config.stackName}FirebaseAuthorizerRole`);
     const authorizerFn = new nodejs.NodejsFunction(this, 'FirebaseAuthorizer', {
       functionName: `fridge-manager-${props.config.environment}-authorizer`, logGroup: authorizerLogGroup,
-      role: lambdaRole('Authorizer', authorizerLogGroup, `${props.config.stackName}FirebaseAuthorizerRole`),
+      role: authorizerRole,
       entry: resolve('infra/lambda/firebase-authorizer-index.ts'), handler: 'main', runtime: lambda.Runtime.NODEJS_22_X,
       timeout: Duration.seconds(10), memorySize: 256,
       environment: {
@@ -293,6 +294,7 @@ export class AnalysisApiStack extends Stack {
       sourceArn: this.formatArn({ service: 'execute-api', resource: api.restApiId, resourceName: 'authorizers/*' }),
     });
     new CfnOutput(this, 'AnalysisApiUrl', { value: `${api.url}v1/analysis`, description: '認証必須の解析API endpoint' });
+    new CfnOutput(this, 'FirebaseAuthorizerRoleArn', { value: authorizerRole.roleArn, description: 'Google WIFで許可するFirebase検証Lambda role' });
     new CfnOutput(this, 'AiControlTableName', { value: controlTable.tableName, description: 'AI停止状態の検証用table' });
     new CfnOutput(this, 'AiControlFunctionName', { value: controlFn.functionName, description: '監査付きAI停止・復旧function' });
   }
