@@ -37,10 +37,28 @@ describe('AnalysisApiStack', () => {
   });
 
   it('cacheなしREQUEST authorizerで双方のtoken検証前に解析Lambdaへ到達させない', () => {
+    const restApi = Object.values(template.findResources('AWS::ApiGateway::RestApi'))[0]!;
+    const body = restApi.Properties.Body as {
+      components: { securitySchemes: Record<string, unknown> };
+      paths: Record<string, { post: Record<string, unknown> }>;
+    };
+    expect(body.components.securitySchemes).toMatchObject({
+      FirebaseAuthorizer: {
+        type: 'apiKey',
+        name: 'Authorization',
+        in: 'header',
+        'x-amazon-apigateway-authtype': 'custom',
+        'x-amazon-apigateway-authorizer': {
+          type: 'request',
+          authorizerResultTtlInSeconds: 0,
+          identitySource: 'method.request.header.Authorization,method.request.header.X-Firebase-AppCheck',
+          authorizerUri: expect.anything(),
+        },
+      },
+    });
+    expect(body.paths['/v1/analysis']!.post.security).toEqual([{ FirebaseAuthorizer: [] }]);
     const rendered = JSON.stringify(template.toJSON());
-    expect(rendered).toContain('method.request.header.Authorization,method.request.header.X-Firebase-AppCheck');
-    expect(rendered).toContain('authorizerResultTtlInSeconds');
-    expect(rendered).toContain('FirebaseAuthorizer');
+    expect(JSON.stringify(body.components.securitySchemes)).toContain(':apigateway:');
     expect(rendered).toContain('authorizers/*');
     template.hasResourceProperties('AWS::Lambda::Function', { Environment: { Variables: Match.objectLike({
       FIREBASE_PROJECT_ID: { Ref: 'FirebaseProjectId' },
