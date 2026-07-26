@@ -36,6 +36,12 @@ internal class FirebaseAnonymousAuthGateway(
             ?.takeIf(String::isNotBlank)
             ?: error("Firebase ID token is unavailable")
     }
+
+    override suspend fun deleteCurrentAnonymousUser() {
+        val user = auth.currentUser ?: return
+        check(user.isAnonymous) { "Only an anonymous Firebase user can be deleted" }
+        user.delete().awaitResult()
+    }
 }
 
 internal class FirebaseLimitedUseAppCheckGateway(
@@ -82,6 +88,7 @@ object FirebaseAuthComposition {
             override suspend fun signInAnonymously(): AnonymousUser = error("Firebase is not configured")
             override suspend fun getIdToken(user: AnonymousUser, forceRefresh: Boolean): String =
                 error("Firebase is not configured")
+            override suspend fun deleteCurrentAnonymousUser() = Unit
         }
         return AuthCoordinator(
             firebaseAuth = unavailable,

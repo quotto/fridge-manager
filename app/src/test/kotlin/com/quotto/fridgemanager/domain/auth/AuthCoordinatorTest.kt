@@ -143,6 +143,22 @@ class AuthCoordinatorTest {
         assertFalse(coordinator.state.value is AuthState.AiUnavailable)
     }
 
+    @Test
+    fun `匿名ユーザー削除後は全認可経路と初期化で再作成しない`() = runTest {
+        val firebase = FakeFirebaseAuth(currentUser = AnonymousUser("deleted-user"))
+        val coordinator = coordinator(firebase = firebase)
+
+        coordinator.deleteAnonymousUser()
+
+        assertNull(coordinator.prepareAiRequest())
+        assertNull(coordinator.retry())
+        assertNull(coordinator.withFreshAuthorization { "must not run" })
+        assertFalse(coordinator.initialize())
+        assertEquals(0, firebase.signInCalls)
+        assertEquals(1, firebase.deleteCalls)
+        assertTrue(coordinator.state.value is AuthState.Deleted)
+    }
+
     private fun coordinator(
         firebase: FakeFirebaseAuth = FakeFirebaseAuth(currentUser = AnonymousUser("existing-user")),
         appCheck: FakeAppCheck = FakeAppCheck(),
@@ -155,6 +171,8 @@ class AuthCoordinatorTest {
         private val idToken: String = "id-token",
         var tokenFailure: Throwable? = null,
     ) : FirebaseAuthGateway {
+        var deleteCalls = 0
+        override suspend fun deleteCurrentAnonymousUser() { deleteCalls++ }
         var signInCalls = 0
         var tokenRequestedFor: AnonymousUser? = null
         val forceRefreshArguments = mutableListOf<Boolean>()

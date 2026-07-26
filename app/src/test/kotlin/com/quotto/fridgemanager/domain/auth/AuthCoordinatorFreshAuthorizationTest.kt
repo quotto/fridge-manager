@@ -75,6 +75,7 @@ class AuthCoordinatorFreshAuthorizationTest {
     private class SequentialFirebaseAuth(
         private val failure: Throwable? = null,
     ) : FirebaseAuthGateway {
+        override suspend fun deleteCurrentAnonymousUser() = Unit
         private val user = AnonymousUser("anonymous-user")
         var tokenCalls = 0
         override fun currentAnonymousUser(): AnonymousUser = user
