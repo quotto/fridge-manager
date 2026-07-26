@@ -8,6 +8,13 @@ import com.quotto.fridgemanager.domain.inventory.DomainErrorCode
 import com.quotto.fridgemanager.domain.inventory.DomainValidationException
 import com.quotto.fridgemanager.domain.inventory.IngredientDraft
 import com.quotto.fridgemanager.domain.inventory.InventoryBatch
+import com.quotto.fridgemanager.domain.inventory.InventoryCommit
+import com.quotto.fridgemanager.domain.inventory.IngredientName
+import com.quotto.fridgemanager.domain.inventory.InventoryQuantity
+import com.quotto.fridgemanager.domain.inventory.InventoryUnit
+import com.quotto.fridgemanager.domain.inventory.StoredIngredient
+import com.quotto.fridgemanager.domain.inventory.StoredIngredientNotFoundException
+import com.quotto.fridgemanager.domain.inventory.StaleStoredIngredientException
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.async
@@ -97,6 +104,92 @@ class RoomInventoryRepositoryTest {
         }
 
         assertEquals(listOf("牛乳"), repository.getAll().map { it.name.value })
+    }
+
+    @Test
+    fun commit_savesNewItemsAndOptimisticUpdatesInOneTransaction() = runBlocking {
+        repository.saveBatch(
+            InventoryBatch.create(listOf(IngredientDraft.create("牛乳", "1", "本"))),
+        )
+        val milk = repository.getAll().single()
+
+        repository.commit(
+            InventoryCommit.create(
+                newItems = listOf(IngredientDraft.create("卵", "10", "個")),
+                updates = listOf(milk.withValues(name = "低脂肪乳", quantity = "2", unit = InventoryUnit.LITER)),
+            ),
+        )
+
+        assertEquals(listOf("低脂肪乳", "卵"), repository.getAll().map { it.name.value })
+        assertEquals("2", repository.getAll().first { it.id == milk.id }.quantity.toString())
+    }
+
+    @Test
+    fun commit_rollsBackEarlierInsertWhenLaterUpdateIsStale() = runBlocking {
+        repository.saveBatch(
+            InventoryBatch.create(listOf(IngredientDraft.create("牛乳", "1", "本"))),
+        )
+        val staleSnapshot = repository.getAll().single()
+        repository.update(staleSnapshot.withValues(quantity = "2"))
+
+        assertThrows(StaleStoredIngredientException::class.java) {
+            runBlocking {
+                repository.commit(
+                    InventoryCommit.create(
+                        newItems = listOf(IngredientDraft.create("卵", "10", "個")),
+                        updates = listOf(staleSnapshot.withValues(quantity = "3")),
+                    ),
+                )
+            }
+        }
+
+        assertEquals(listOf("牛乳"), repository.getAll().map { it.name.value })
+        assertEquals("2", repository.getAll().single().quantity.toString())
+    }
+
+    @Test
+    fun commit_rollsBackEarlierInsertWhenLaterUpdateTargetDoesNotExist() = runBlocking {
+        val missing = testStoredIngredient(id = "missing", name = "牛乳")
+
+        assertThrows(StoredIngredientNotFoundException::class.java) {
+            runBlocking {
+                repository.commit(
+                    InventoryCommit.create(
+                        newItems = listOf(IngredientDraft.create("卵", "10", "個")),
+                        updates = listOf(missing),
+                    ),
+                )
+            }
+        }
+
+        assertEquals(emptyList<Any>(), repository.getAll())
+    }
+
+    @Test
+    fun commit_rollsBackEarlierUpdateWhenLaterInsertViolatesUniqueConstraint() = runBlocking {
+        repository.saveBatch(
+            InventoryBatch.create(
+                listOf(
+                    IngredientDraft.create("牛乳", "1", "本"),
+                    IngredientDraft.create("卵", "10", "個"),
+                ),
+            ),
+        )
+        val milk = repository.getAll().first { it.name.value == "牛乳" }
+
+        assertThrows(DuplicateStoredIngredientException::class.java) {
+            runBlocking {
+                repository.commit(
+                    InventoryCommit.create(
+                        newItems = listOf(IngredientDraft.create(" 卵 ", "12", "個")),
+                        updates = listOf(milk.withValues(quantity = "2")),
+                    ),
+                )
+            }
+        }
+
+        assertEquals("1", repository.getAll().first { it.id == milk.id }.quantity.toString())
+        assertEquals(2, repository.getAll().size)
     }
 
     @Test
@@ -346,3 +439,22 @@ class InventoryDatabaseReopenTest {
         }
     }
 }
+
+private fun StoredIngredient.withValues(
+    name: String = this.name.value,
+    quantity: String = this.quantity.toString(),
+    unit: InventoryUnit = this.unit,
+) = copy(
+    name = IngredientName.from(name),
+    quantity = InventoryQuantity.from(quantity),
+    unit = unit,
+)
+
+private fun testStoredIngredient(id: String, name: String) = StoredIngredient(
+    id = id,
+    name = IngredientName.from(name),
+    quantity = InventoryQuantity.from("1"),
+    unit = InventoryUnit.PIECE,
+    createdAtEpochMillis = 1L,
+    updatedAtEpochMillis = 1L,
+)

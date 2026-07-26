@@ -72,6 +72,59 @@ class InventoryBatch private constructor(val items: List<IngredientDraft>) {
     }
 }
 
+/**
+ * 新規追加と既存在庫更新を、1回の永続化トランザクションへ渡す確定コマンド。
+ *
+ * 候補はユーザー確認後の最終絶対値だけを保持し、差分を永続化層で再計算しない。
+ */
+class InventoryCommit private constructor(
+    val newItems: List<IngredientDraft>,
+    val updates: List<StoredIngredient>,
+) {
+    val size: Int = newItems.size + updates.size
+
+    companion object {
+        fun create(
+            newItems: List<IngredientDraft>,
+            updates: List<StoredIngredient>,
+        ): InventoryCommit {
+            val size = newItems.size + updates.size
+            if (size == 0) {
+                throw DomainValidationException(
+                    DomainErrorCode.BATCH_EMPTY,
+                    "A commit must contain at least one item",
+                )
+            }
+            if (size > InventoryBatch.MAX_ITEMS) {
+                throw DomainValidationException(
+                    DomainErrorCode.BATCH_TOO_LARGE,
+                    "A commit may contain at most 30 items",
+                )
+            }
+            require(updates.map { it.id }.distinct().size == updates.size) {
+                "An inventory item may only be updated once per commit"
+            }
+
+            val names = newItems.map { it.name } + updates.map { it.name }
+            val duplicateGroups = names
+                .withIndex()
+                .groupBy(
+                    keySelector = { it.value.normalizedValue },
+                    valueTransform = { it.index },
+                )
+                .filterValues { it.size > 1 }
+                .map { (normalizedName, indices) -> DuplicateGroup(normalizedName, indices) }
+            if (duplicateGroups.isNotEmpty()) {
+                throw DuplicateIngredientException(duplicateGroups)
+            }
+            return InventoryCommit(
+                newItems = Collections.unmodifiableList(newItems.toList()),
+                updates = Collections.unmodifiableList(updates.toList()),
+            )
+        }
+    }
+}
+
 object DuplicateIngredients {
     fun find(
         candidates: List<IngredientName>,

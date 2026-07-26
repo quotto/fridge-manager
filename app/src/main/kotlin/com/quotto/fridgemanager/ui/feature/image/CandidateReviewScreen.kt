@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.quotto.fridgemanager.domain.analysis.AnalysisApiResult
 import com.quotto.fridgemanager.domain.inventory.InventoryUnit
+import com.quotto.fridgemanager.domain.inventory.UpdateMethod
 import com.quotto.fridgemanager.presentation.candidate.CandidateReviewItem
 import com.quotto.fridgemanager.presentation.candidate.CandidateReviewPresenter
 import com.quotto.fridgemanager.presentation.candidate.ReviewedCandidate
@@ -57,6 +58,8 @@ fun CandidateReviewScreen(
                 state.loadingError?.let { Text(it) }
                 if (state.isLoading) Text("現在の在庫と候補を照合しています")
                 state.batchError?.let { Text(it) }
+                state.commitError?.let { Text(it) }
+                if (state.isCommitting) Text("在庫へ反映しています")
                 state.warnings.forEach { Text("警告: ${warningLabel(it)}") }
             }
             items(state.items, key = { it.id }) { item ->
@@ -64,6 +67,9 @@ fun CandidateReviewScreen(
                     item = item,
                     onUpdate = { name, quantity, unit -> review.update(item.id, name, quantity, unit) },
                     onIncludedChange = { review.setIncluded(item.id, it) },
+                    onMerge = { review.mergeDuplicatesInto(item.id) },
+                    onUpdateMethod = { review.selectUpdateMethod(item.id, it) },
+                    enabled = !state.isCommitting,
                 )
             }
             item {
@@ -71,14 +77,11 @@ fun CandidateReviewScreen(
                     Text("候補を追加する")
                 }
                 Button(
-                    onClick = { review.handoff(onValidated) },
+                    onClick = { review.confirm(onValidated) },
                     enabled = state.canProceed,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("確認内容を次へ進める")
-                }
-                if (state.validatedDrafts.isNotEmpty()) {
-                    Text("${state.validatedDrafts.size}件を確認しました（在庫にはまだ反映されていません）")
+                    Text(if (state.isCommitting) "在庫へ反映中" else "在庫に一括反映する")
                 }
             }
         }
@@ -90,6 +93,9 @@ private fun CandidateCard(
     item: CandidateReviewItem,
     onUpdate: (String, String, String) -> Unit,
     onIncludedChange: (Boolean) -> Unit,
+    onMerge: () -> Unit,
+    onUpdateMethod: (UpdateMethod) -> Unit,
+    enabled: Boolean,
 ) {
     Card(Modifier.fillMaxWidth().semantics {
         contentDescription = if (item.included) "AI候補" else "除外したAI候補"
@@ -97,7 +103,7 @@ private fun CandidateCard(
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(if (item.existingIngredient == null) "新規候補" else "登録済み食材の更新候補")
-                OutlinedButton(onClick = { onIncludedChange(!item.included) }) {
+                OutlinedButton(onClick = { onIncludedChange(!item.included) }, enabled = enabled) {
                     Text(if (item.included) "除外する" else "候補に戻す")
                 }
             }
@@ -125,9 +131,35 @@ private fun CandidateCard(
                 )
                 UnitSelector(item.unit) { onUpdate(item.name, item.quantity, it) }
                 item.unitError?.let { Text(it) }
+                if (item.nameError?.contains("統合または除外") == true) {
+                    OutlinedButton(onClick = onMerge, enabled = enabled) {
+                        Text("この候補に統合する")
+                    }
+                }
+                item.existingIngredient?.let {
+                    Text("反映方法を選択してください")
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        UpdateMethod.entries.forEach { method ->
+                            OutlinedButton(
+                                onClick = { onUpdateMethod(method) },
+                                enabled = enabled,
+                            ) {
+                                Text(updateMethodLabel(method))
+                            }
+                        }
+                    }
+                    item.resultQuantity?.let { result -> Text("反映後の在庫: $result ${item.unit}") }
+                    item.updateError?.let { error -> Text(error) }
+                }
             }
         }
     }
+}
+
+private fun updateMethodLabel(method: UpdateMethod): String = when (method) {
+    UpdateMethod.INCREASE -> "増加"
+    UpdateMethod.DECREASE -> "減少"
+    UpdateMethod.REPLACE -> "置換"
 }
 
 @Composable
