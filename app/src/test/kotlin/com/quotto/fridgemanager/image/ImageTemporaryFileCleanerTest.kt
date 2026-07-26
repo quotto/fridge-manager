@@ -1,6 +1,8 @@
 package com.quotto.fridgemanager.image
 
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import kotlin.io.path.createTempDirectory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -106,8 +108,12 @@ class ImageTemporaryFileCleanerTest {
             cacheDirectory = root,
             deleteFile = { deleteCalls++; it.delete() },
             beforeAtomicMove = { candidate ->
-                candidate.delete()
-                replacement.copyTo(candidate)
+                Files.move(
+                    replacement.toPath(),
+                    candidate.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
             },
         )
 
