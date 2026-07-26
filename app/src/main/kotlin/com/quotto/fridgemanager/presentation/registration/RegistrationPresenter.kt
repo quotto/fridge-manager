@@ -107,7 +107,7 @@ private fun DomainErrorCode.toField(): RegistrationField = when (this) {
     DomainErrorCode.NAME_REQUIRED, DomainErrorCode.NAME_TOO_LONG, DomainErrorCode.DUPLICATE_NAME -> RegistrationField.NAME
     DomainErrorCode.INVALID_QUANTITY, DomainErrorCode.QUANTITY_OUT_OF_RANGE -> RegistrationField.QUANTITY
     DomainErrorCode.UNKNOWN_UNIT -> RegistrationField.UNIT
-    DomainErrorCode.BATCH_TOO_LARGE -> RegistrationField.NAME
+    DomainErrorCode.BATCH_EMPTY, DomainErrorCode.BATCH_TOO_LARGE -> RegistrationField.NAME
 }
 
 private fun DomainErrorCode.toUserMessage(): String = when (this) {
