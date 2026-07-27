@@ -126,7 +126,7 @@ class AuthorizedAnalysisApiClient(
     )
 
     private companion object {
-        const val REQUEST_TIMEOUT_MILLIS = 55_000L
+        const val REQUEST_TIMEOUT_MILLIS = 60_000L
         val JSON = Json { ignoreUnknownKeys = false; explicitNulls = true }
         val REQUEST_JSON = Json { explicitNulls = false }
         val QUOTA_TYPES = setOf("SHORT", "DAILY", "MONTHLY", "GLOBAL", "BUDGET")

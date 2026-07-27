@@ -40,8 +40,8 @@ class CandidateReviewScreenTest {
                 CandidateReviewScreen(
                     result = success(
                         candidates = listOf(
-                            AnalysisCandidate("豆腐", "2", "丁", "VISIBLE", false),
-                            AnalysisCandidate(null, null, null, "INFERRED", true),
+                            AnalysisCandidate("豆腐", "2", "丁", "VISIBLE_COUNT", false),
+                            AnalysisCandidate(null, null, null, "VISUAL_ESTIMATE", true),
                         ),
                         warnings = listOf("LOW_CONFIDENCE"),
                     ),
@@ -51,8 +51,8 @@ class CandidateReviewScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("根拠: 画像で確認").assertIsDisplayed()
-        composeRule.onNodeWithText("根拠: 画像から推定").assertIsDisplayed()
+        composeRule.onNodeWithText("根拠: 画像内の個数").assertIsDisplayed()
+        composeRule.onNodeWithText("根拠: 画像からの推定").assertIsDisplayed()
         composeRule.onNodeWithText("要確認").assertIsDisplayed()
         composeRule.onNodeWithText("警告: 推定の確度が低い候補があります").assertIsDisplayed()
         composeRule.onNodeWithText("現在の在庫: 1 丁").assertIsDisplayed()
@@ -65,7 +65,7 @@ class CandidateReviewScreenTest {
         composeRule.setContent {
             FridgeManagerTheme {
                 CandidateReviewScreen(
-                    result = success(listOf(AnalysisCandidate("卵", "6", "個", "VISIBLE", false))),
+                    result = success(listOf(AnalysisCandidate("卵", "6", "個", "VISIBLE_COUNT", false))),
                     presenter = CandidateReviewPresenter(RecordingRepository()),
                     onValidated = {},
                 )
@@ -97,7 +97,7 @@ class CandidateReviewScreenTest {
         composeRule.setContent {
             FridgeManagerTheme {
                 CandidateReviewScreen(
-                    result = success(listOf(AnalysisCandidate("米", "2", "kg", "VISIBLE", false))),
+                    result = success(listOf(AnalysisCandidate("米", "2", "kg", "VISIBLE_COUNT", false))),
                     presenter = CandidateReviewPresenter(repository),
                     onValidated = { handedOff = it },
                 )
@@ -116,8 +116,8 @@ class CandidateReviewScreenTest {
                 CandidateReviewScreen(
                     result = success(
                         listOf(
-                            AnalysisCandidate("ＮＦＫＣ", "1", "個", "VISIBLE", false),
-                            AnalysisCandidate("NFKC", "2", "個", "VISIBLE", false),
+                            AnalysisCandidate("ＮＦＫＣ", "1", "個", "VISIBLE_COUNT", false),
+                            AnalysisCandidate("NFKC", "2", "個", "VISIBLE_COUNT", false),
                         ),
                     ),
                     presenter = CandidateReviewPresenter(RecordingRepository()),
@@ -137,7 +137,7 @@ class CandidateReviewScreenTest {
         composeRule.setContent {
             FridgeManagerTheme {
                 CandidateReviewScreen(
-                    result = success(listOf(AnalysisCandidate("豆腐", "2", "丁", "VISIBLE", false))),
+                    result = success(listOf(AnalysisCandidate("豆腐", "2", "丁", "VISIBLE_COUNT", false))),
                     presenter = CandidateReviewPresenter(RecordingRepository(listOf(storedIngredient()))),
                     onValidated = {},
                 )
