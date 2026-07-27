@@ -10,8 +10,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -19,21 +17,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.quotto.fridgemanager.domain.analysis.AnalysisApiResult
-import com.quotto.fridgemanager.domain.inventory.InventoryUnit
 import com.quotto.fridgemanager.domain.inventory.UpdateMethod
 import com.quotto.fridgemanager.presentation.candidate.CandidateReviewItem
 import com.quotto.fridgemanager.presentation.candidate.CandidateReviewPresenter
 import com.quotto.fridgemanager.presentation.candidate.ReviewedCandidate
 import com.quotto.fridgemanager.ui.component.ScreenHeader
+import com.quotto.fridgemanager.ui.component.UnitSelectionField
 
 @Composable
 fun CandidateReviewScreen(
@@ -129,7 +125,7 @@ private fun CandidateCard(
                     isError = item.quantityError != null || item.quantity.isBlank(),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                UnitSelector(item.unit) { onUpdate(item.name, item.quantity, it) }
+                UnitSelectionField(item.unit) { onUpdate(item.name, item.quantity, it) }
                 item.unitError?.let { Text(it) }
                 if (item.nameError?.contains("統合または除外") == true) {
                     OutlinedButton(onClick = onMerge, enabled = enabled) {
@@ -160,24 +156,6 @@ private fun updateMethodLabel(method: UpdateMethod): String = when (method) {
     UpdateMethod.INCREASE -> "増加"
     UpdateMethod.DECREASE -> "減少"
     UpdateMethod.REPLACE -> "置換"
-}
-
-@Composable
-private fun UnitSelector(selected: String, onSelected: (String) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Column {
-        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
-            Text(if (selected.isBlank()) "単位を選択（未入力）" else "単位: $selected")
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            InventoryUnit.entries.forEach { unit ->
-                DropdownMenuItem(text = { Text(unit.symbol) }, onClick = {
-                    expanded = false
-                    onSelected(unit.symbol)
-                })
-            }
-        }
-    }
 }
 
 private fun evidenceLabel(value: String): String = when (value) {
