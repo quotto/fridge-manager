@@ -31,14 +31,14 @@ class AuthorizedAnalysisApiClientTest {
     }
 
     @Test
-    fun `requestIdとJPEG base64を契約JSONにして55秒timeoutで一度だけ送る`() = runTest {
+    fun `requestIdとJPEG base64を契約JSONにして60秒timeoutで一度だけ送る`() = runTest {
         val transport = RecordingTransport(successResponse())
         val client = client(transport = transport)
 
         client.analyze(request())
 
         val sent = transport.requests.single()
-        assertEquals(55_000L, sent.timeoutMillis)
+        assertEquals(60_000L, sent.timeoutMillis)
         assertEquals("application/json", sent.headers["Content-Type"])
         assertTrue(sent.body.contains("\"requestId\":\"018f47a0-90c0-7d54-b92d-4285f7fb3312\""))
         assertTrue(sent.body.contains("\"mode\":\"new\""))
