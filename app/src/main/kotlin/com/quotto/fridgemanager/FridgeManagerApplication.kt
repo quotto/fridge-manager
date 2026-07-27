@@ -10,19 +10,19 @@ import com.quotto.fridgemanager.image.ImageCleanupMonitor
 import com.quotto.fridgemanager.image.ImageCleanupRetryCoordinator
 import com.quotto.fridgemanager.image.ImageCleanupWorker
 import com.quotto.fridgemanager.image.ImageCleanupWorkPolicy
-import com.quotto.fridgemanager.image.ImageTemporaryFileCleaner
+import com.quotto.fridgemanager.image.imageTemporaryFileCleaners
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /** 起動・再開・プロセス終了後も、画像一時ファイル削除を永続的に再試行する。 */
 class FridgeManagerApplication : Application(), Application.ActivityLifecycleCallbacks {
     private val cleanupExecutor = Executors.newSingleThreadExecutor()
-    private val cleaner by lazy {
-        ImageTemporaryFileCleaner(cacheDir, monitor = ImageCleanupMonitor::report)
+    private val cleaners by lazy {
+        imageTemporaryFileCleaners(cacheDir, ImageCleanupMonitor::report)
     }
     private val retryCoordinator by lazy {
         ImageCleanupRetryCoordinator(
-            cleanup = { cleaner.cleanup() },
+            cleanup = { cleaners.forEach { it.cleanup() } },
             scheduleRepeating = { intervalMillis, _ ->
                 val request = PeriodicWorkRequestBuilder<ImageCleanupWorker>(
                     intervalMillis,

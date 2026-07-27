@@ -375,7 +375,7 @@ class ImageTemporaryFileCleaner(
         const val PENDING_FILE_NAME = ".image-cleanup-pending-v1"
         const val MONITORING_PENDING_FILE_NAME = ".image-cleanup-monitor-pending-v1"
         const val DELETION_DEADLINE_MILLIS = 60L * 60L * 1_000L
-        private val PREFIXES = listOf("image-source-", "image-upload-")
+        private val PREFIXES = listOf("image-source-", "image-upload-", "image-capture-")
         private val REGISTRY_LOCK = Any()
         private const val MONITORING_BLOCKED_TIMESTAMP = -1L
     }

@@ -47,6 +47,20 @@ class ImageTemporaryFileCleanerTest {
         assertFalse(upload.exists())
     }
 
+    @Test fun `撮影画像の削除失敗も永続記録し次回起動相当で再試行する`() {
+        val root = root()
+        val target = image(root, "image-capture-restart.jpg")
+        val failing = ImageTemporaryFileCleaner(root, deleteFile = { false })
+
+        assertEquals(ImageDeletionResult.Scheduled, failing.deleteOrSchedule(target, nowMillis = 1_000))
+
+        val restarted = ImageTemporaryFileCleaner(root)
+        restarted.cleanup(nowMillis = 2_000)
+
+        assertFalse(target.exists())
+        assertFalse(File(root, ImageTemporaryFileCleaner.PENDING_FILE_NAME).exists())
+    }
+
     @Test fun `期限未満の未登録ファイルは実行中として削除しない`() {
         val root = root()
         val active = image(root, "image-upload-active.jpg", lastModified = 1_001)
@@ -327,7 +341,9 @@ class ImageTemporaryFileCleanerTest {
 
     private fun root() = createTempDirectory("cleaner-").toFile()
     private fun temporaryImages(root: File): List<File> = root.listFiles().orEmpty().filter {
-        it.name.startsWith("image-source-") || it.name.startsWith("image-upload-")
+        it.name.startsWith("image-source-") ||
+            it.name.startsWith("image-upload-") ||
+            it.name.startsWith("image-capture-")
     }
     private fun image(parent: File, name: String, lastModified: Long = 1_000): File =
         File(parent, name).apply { writeText("test-bytes"); setLastModified(lastModified) }

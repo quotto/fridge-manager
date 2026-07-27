@@ -10,13 +10,24 @@ class ImageCleanupWorker(
     parameters: WorkerParameters,
 ) : Worker(appContext, parameters) {
     override fun doWork(): Result = runCatching {
-        val run = ImageTemporaryFileCleaner(
+        val runs = imageTemporaryFileCleaners(
             applicationContext.cacheDir,
-            monitor = ImageCleanupMonitor::report,
-        ).cleanup()
-        if (ImageCleanupWorkDecision.shouldRetry(run.report)) Result.retry() else Result.success()
+            ImageCleanupMonitor::report,
+        ).map { it.cleanup() }
+        if (runs.any { ImageCleanupWorkDecision.shouldRetry(it.report) }) Result.retry() else Result.success()
     }.getOrElse { Result.retry() }
 }
+
+internal fun imageTemporaryFileCleaners(
+    cacheDirectory: java.io.File,
+    monitor: (ImageCleanupReport) -> Boolean,
+): List<ImageTemporaryFileCleaner> = listOf(
+    ImageTemporaryFileCleaner(cacheDirectory, monitor = monitor),
+    ImageTemporaryFileCleaner(
+        java.io.File(cacheDirectory, CAMERA_CAPTURE_DIRECTORY),
+        monitor = monitor,
+    ),
+)
 
 object ImageCleanupWorkDecision {
     fun shouldRetry(report: ImageCleanupReport): Boolean =
