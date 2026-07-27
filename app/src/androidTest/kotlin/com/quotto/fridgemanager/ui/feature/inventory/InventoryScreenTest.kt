@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import com.quotto.fridgemanager.domain.inventory.IngredientName
 import com.quotto.fridgemanager.domain.inventory.InventoryQuantity
 import com.quotto.fridgemanager.domain.inventory.InventoryUnit
@@ -14,6 +15,7 @@ import com.quotto.fridgemanager.domain.inventory.StoredIngredient
 import com.quotto.fridgemanager.presentation.inventory.InventoryUiState
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertEquals
 
 class InventoryScreenTest {
     @get:Rule
@@ -46,13 +48,50 @@ class InventoryScreenTest {
     }
 
     @Test
-    fun 空状態には手動登録と画像登録の導線がある() {
+    fun 空状態の登録FABから登録方法を選択できる() {
+        var manualClicks = 0
+        var imageClicks = 0
         composeRule.setContent {
-            InventoryScreen(InventoryUiState.Empty, {}, {}, {})
+            InventoryScreen(
+                InventoryUiState.Empty,
+                { manualClicks++ },
+                { imageClicks++ },
+                {},
+            )
         }
 
-        composeRule.onNodeWithText("手動で登録").assertHasClickAction()
-        composeRule.onNodeWithText("画像から登録").assertHasClickAction()
+        composeRule.onNodeWithText("手動で登録").assertDoesNotExist()
+        composeRule.onNodeWithText("画像から登録").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("食材を登録").performClick()
+        composeRule.onNodeWithText("登録方法を選択").assertIsDisplayed()
+        composeRule.onNodeWithText("手動で登録").performClick()
+        composeRule.runOnIdle {
+            assertEquals(1, manualClicks)
+            assertEquals(0, imageClicks)
+        }
+
+        composeRule.onNodeWithContentDescription("食材を登録").performClick()
+        composeRule.onNodeWithText("画像から登録").performClick()
+        composeRule.runOnIdle {
+            assertEquals(1, manualClicks)
+            assertEquals(1, imageClicks)
+        }
+    }
+
+    @Test
+    fun 在庫がある場合も登録FABを表示する() {
+        composeRule.setContent {
+            InventoryScreen(
+                InventoryUiState.Content(listOf(ingredient("1", "りんご", "1", InventoryUnit.PIECE))),
+                {},
+                {},
+                {},
+            )
+        }
+
+        composeRule.onNodeWithContentDescription("食材を登録")
+            .assertIsDisplayed()
+            .assertHasClickAction()
     }
 
     private fun ingredient(

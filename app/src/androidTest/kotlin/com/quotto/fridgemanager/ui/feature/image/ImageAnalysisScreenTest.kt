@@ -18,17 +18,15 @@ class ImageAnalysisScreenTest {
     @get:Rule val composeRule = createComposeRule()
 
     @Test
-    fun `画像選択と撮影と手動登録の導線を常に表示する`() {
+    fun `画像選択と撮影の導線を表示し手動登録の重複導線は表示しない`() {
         var pickerClicks = 0
         var cameraClicks = 0
-        var manualClicks = 0
         composeRule.setContent {
             ImageInputContent(
                 cameraMessage = CameraMessage.None,
                 hasSelection = false,
                 onPickImage = { pickerClicks++ },
                 onTakePhoto = { cameraClicks++ },
-                onManualRegistration = { manualClicks++ },
                 onDiscardSelection = {},
                 onOpenCameraSettings = {},
             )
@@ -36,11 +34,10 @@ class ImageAnalysisScreenTest {
 
         composeRule.onNodeWithText("端末から1枚選ぶ").performClick()
         composeRule.onNodeWithText("写真を撮る").performClick()
-        composeRule.onNodeWithText("手動で登録する").performClick()
+        composeRule.onNodeWithText("手動で登録する").assertDoesNotExist()
 
         assertEquals(1, pickerClicks)
         assertEquals(1, cameraClicks)
-        assertEquals(1, manualClicks)
     }
 
     @Test
@@ -52,7 +49,6 @@ class ImageAnalysisScreenTest {
                 hasSelection = false,
                 onPickImage = {},
                 onTakePhoto = {},
-                onManualRegistration = {},
                 onDiscardSelection = {},
                 onOpenCameraSettings = { settingsClicks++ },
             )
@@ -61,7 +57,7 @@ class ImageAnalysisScreenTest {
         composeRule.onNodeWithText("端末のカメラ設定と、カメラアプリを利用できるか確認してください").assertIsDisplayed()
         composeRule.onNodeWithText("端末の設定を開く").performClick()
         composeRule.onNodeWithText("端末から1枚選ぶ").assertIsDisplayed()
-        composeRule.onNodeWithText("手動で登録する").assertIsDisplayed()
+        composeRule.onNodeWithText("手動で登録する").assertDoesNotExist()
         assertEquals(1, settingsClicks)
     }
 
@@ -75,7 +71,6 @@ class ImageAnalysisScreenTest {
                 hasSelection = true,
                 onPickImage = {},
                 onTakePhoto = {},
-                onManualRegistration = {},
                 onDiscardSelection = { discards++ },
                 onOpenCameraSettings = {},
                 onUseSelection = { uses++ },
@@ -123,12 +118,14 @@ class ImageAnalysisScreenTest {
     }
 
     @Test
-    fun `上限失敗は種別と再利用日時と全代替導線を表示する`() {
+    fun `上限失敗は種別と再利用日時と画像操作の代替導線を表示する`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val image = PreprocessedImage(File.createTempFile("preview-test-", ".jpg", context.cacheDir), 640, 480, false)
+        var manualFallbacks = 0
         composeRule.setContent {
             ImagePreviewContent(
                 image, onSend = {}, onReselect = {},
+                onManualFallback = { manualFallbacks++ },
                 failure = ImageAnalysisState.Failed(
                     "AI解析の利用上限に達しました", image, "2026-07-21T15:00:00Z", "DAILY",
                 ),
@@ -138,7 +135,8 @@ class ImageAnalysisScreenTest {
         composeRule.onNodeWithText("再利用日時: 2026-07-21T15:00:00Z").assertIsDisplayed()
         composeRule.onNodeWithText("再試行する").assertIsDisplayed()
         composeRule.onNodeWithText("選び直す").assertIsDisplayed()
-        composeRule.onNodeWithText("手動で登録する").assertIsDisplayed()
+        composeRule.onNodeWithText("手動入力に切り替える").performClick()
+        assertEquals(1, manualFallbacks)
         image.close()
     }
 }
