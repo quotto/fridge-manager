@@ -233,6 +233,10 @@ export class AnalysisApiStack extends Stack {
     const serviceFailures = metric('Requests', 'Sum', { Environment: props.config.environment, Outcome: 'SERVICE_FAILURE' });
     const quotaRejects = metric('Requests', 'Sum', { Environment: props.config.environment, Outcome: 'QUOTA_REJECT' });
     const latencyP95 = metric('Latency', 'p95');
+    const providerUsageDimensions = { Environment: props.config.environment, ModelId: bedrockPolicy.modelId };
+    const inputTokens = metric('InputTokens', 'Sum', providerUsageDimensions);
+    const outputTokens = metric('OutputTokens', 'Sum', providerUsageDimensions);
+    const providerCallsByModel = metric('ProviderCalls', 'Sum', providerUsageDimensions);
     const coreAlarm = new cloudwatch.Alarm(this, 'CoreAvailabilityAlarm', {
       metric: availability, threshold: 99, comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
       evaluationPeriods: 12, datapointsToAlarm: 6, treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
@@ -257,6 +261,7 @@ export class AnalysisApiStack extends Stack {
       }, label: '30-day availability %', period: Duration.days(30) })], leftYAxis: { min: 98, max: 100 } })],
       [new cloudwatch.GraphWidget({ title: 'Latency p95', left: [latencyP95] }), new cloudwatch.GraphWidget({ title: 'Errors / quota / provider', left: [serviceFailures, providerFailures, quotaRejects] })],
       [new cloudwatch.GraphWidget({ title: 'AI call usage', left: [metric('ProviderCalls')] }), new cloudwatch.AlarmWidget({ title: 'Cost / stop delivery', alarm: budgetStopDlqAlarm })],
+      [new cloudwatch.GraphWidget({ title: 'AI token usage', left: [inputTokens, outputTokens], right: [providerCallsByModel] })],
       [new cloudwatch.GraphWidget({ title: 'Lambda Errors / Throttles', left: [fn.metricErrors(), fn.metricThrottles()] })],
       [new cloudwatch.TextWidget({ markdown: `## Cost controls / SLO definition\nMonthly Budget: 50 USD (50/80/100%) · Cost Anomaly threshold parameter · Global cap: 8,000/month JST. Dashboard availability is a 30-day rolling indicator; the calendar-month SLO is evaluated separately.`, width: 24, height: 3 })],
     ] as unknown as cloudwatch.IWidget[][];

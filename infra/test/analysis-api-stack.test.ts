@@ -190,7 +190,8 @@ describe('AnalysisApiStack', () => {
     template.allResourcesProperties('AWS::Logs::LogGroup', { KmsKeyId: Match.anyValue(), RetentionInDays: 14 });
     template.resourceCountIs('AWS::CloudWatch::Dashboard', 1);
     const rendered = JSON.stringify(template.toJSON());
-    for (const value of ['CoreAvailabilityAlarm', 'ProviderFailureAlarm', 'LatencyP95Alarm', 'AnalysisLambdaErrorAlarm', 'AnalysisLambdaThrottleAlarm', 'AnalysisApi5xxAlarm', 'AuthorizerLambdaErrorAlarm', '30-day availability', '30-day rolling', 'ProviderCalls']) expect(rendered).toContain(value);
+    for (const value of ['CoreAvailabilityAlarm', 'ProviderFailureAlarm', 'LatencyP95Alarm', 'AnalysisLambdaErrorAlarm', 'AnalysisLambdaThrottleAlarm', 'AnalysisApi5xxAlarm', 'AuthorizerLambdaErrorAlarm', '30-day availability', '30-day rolling', 'ProviderCalls', 'AI token usage', 'InputTokens', 'OutputTokens', 'jp.amazon.nova-2-lite-v1:0']) expect(rendered).toContain(value);
+    expect(rendered).not.toContain('ProviderAttempts');
     expect(rendered).toContain('FridgeManager/Analysis');
   });
 
