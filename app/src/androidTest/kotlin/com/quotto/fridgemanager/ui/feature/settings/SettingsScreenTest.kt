@@ -1,12 +1,24 @@
 package com.quotto.fridgemanager.ui.feature.settings
 
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import com.quotto.fridgemanager.presentation.settings.DataDeletionState
+import com.quotto.fridgemanager.presentation.settings.DataDeletionCoordinator
+import com.quotto.fridgemanager.presentation.settings.DataDeletionGateway
 import org.junit.Rule
 import org.junit.Test
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 
 class SettingsScreenTest {
     @get:Rule val composeRule = createComposeRule()
@@ -64,5 +76,115 @@ class SettingsScreenTest {
         composeRule.onNodeWithText("端末データ: 削除済み").assertIsDisplayed()
         composeRule.onNodeWithText("匿名ユーザー: 未完了").assertIsDisplayed()
         composeRule.onNodeWithText("未完了の削除を再試行").assertIsDisplayed()
+    }
+
+    @Test
+    fun 文字サイズ2倍でもスクリーンリーダー向け削除操作を表示できる() {
+        composeRule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(
+                LocalDensity provides Density(density.density, fontScale = 2f),
+            ) {
+                SettingsContent(
+                    deletionState = DataDeletionState.Failed(
+                        localDataDeleted = true,
+                        temporaryImagesDeleted = false,
+                        anonymousUserDeleted = false,
+                    ),
+                    onRequestDeletion = {},
+                    onConfirmDeletion = {},
+                    onDismissDeletion = {},
+                    onRetryDeletion = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("すべての利用データを削除、復元できません")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertHasClickAction()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+        composeRule.onNodeWithContentDescription("未完了の削除だけを再試行")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertHasClickAction()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+        composeRule.onNodeWithContentDescription(
+            "削除状況。端末データは削除済み。一時画像と匿名ユーザーは未完了",
+        ).assertExists()
+    }
+
+    @Test
+    fun 削除操作の読み上げ順は全削除から未完了再試行になる() {
+        composeRule.setContent {
+            SettingsContent(
+                deletionState = DataDeletionState.Failed(
+                    localDataDeleted = true,
+                    temporaryImagesDeleted = false,
+                    anonymousUserDeleted = false,
+                ),
+                onRequestDeletion = {},
+                onConfirmDeletion = {},
+                onDismissDeletion = {},
+                onRetryDeletion = {},
+            )
+        }
+
+        val deleteTop = composeRule
+            .onNodeWithContentDescription("すべての利用データを削除、復元できません")
+            .fetchSemanticsNode()
+            .boundsInRoot
+            .top
+        val retryTop = composeRule
+            .onNodeWithContentDescription("未完了の削除だけを再試行")
+            .fetchSemanticsNode()
+            .boundsInRoot
+            .top
+        check(deleteTop < retryTop)
+    }
+
+    @Test
+    fun 全削除の部分失敗から未完了処理だけを再試行して完了する() {
+        val gateway = RetryableDeletionGateway()
+        composeRule.setContent {
+            SettingsScreen(DataDeletionCoordinator(gateway))
+        }
+
+        composeRule.onNodeWithText("すべての利用データを削除").performClick()
+        composeRule.onNodeWithText("完全に削除").performClick()
+        composeRule.waitUntil(3_000) {
+            runCatching {
+                composeRule.onNodeWithText("匿名ユーザー: 未完了").assertIsDisplayed()
+            }.isSuccess
+        }
+        composeRule.onNodeWithText("端末データ: 削除済み").assertIsDisplayed()
+        composeRule.onNodeWithText("一時画像: 削除済み").assertIsDisplayed()
+
+        composeRule.onNodeWithText("未完了の削除を再試行").performClick()
+        composeRule.onNodeWithText("すべての利用データを削除しました").assertIsDisplayed()
+        composeRule.runOnIdle {
+            check(gateway.localCalls == 1)
+            check(gateway.temporaryCalls == 1)
+            check(gateway.authCalls == 2)
+        }
+    }
+}
+
+private class RetryableDeletionGateway : DataDeletionGateway {
+    var localCalls = 0
+    var temporaryCalls = 0
+    var authCalls = 0
+
+    override suspend fun deleteLocalInventory() {
+        localCalls++
+    }
+
+    override suspend fun deleteTemporaryImages() {
+        temporaryCalls++
+    }
+
+    override suspend fun deleteAnonymousUser() {
+        authCalls++
+        if (authCalls == 1) error("一時的な認証障害")
     }
 }
