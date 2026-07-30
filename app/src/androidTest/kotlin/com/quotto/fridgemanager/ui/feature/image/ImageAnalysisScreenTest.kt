@@ -35,6 +35,12 @@ class ImageAnalysisScreenTest {
         composeRule.onNodeWithText("端末から1枚選ぶ").performClick()
         composeRule.onNodeWithText("写真を撮る").performClick()
         composeRule.onNodeWithText("手動で登録する").assertDoesNotExist()
+        composeRule.onNodeWithText(
+            "食材以外や人物・個人情報が映り込んでいない画像を選んでください。",
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "画像はAWSとAmazon Bedrockへ解析目的で送信され、永続保存やモデル学習には使用されません。",
+        ).assertIsDisplayed()
 
         assertEquals(1, pickerClicks)
         assertEquals(1, cameraClicks)

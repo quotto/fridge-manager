@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -285,10 +287,13 @@ fun ImageInputContent(
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(title = "画像解析")
         Column(
-            modifier = Modifier.padding(24.dp),
+            modifier = Modifier.padding(24.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("解析する画像を1枚選択してください")
+            Text("食材以外や人物・個人情報が映り込んでいない画像を選んでください。")
+            Text("画像はAWSとAmazon Bedrockへ解析目的で送信され、永続保存やモデル学習には使用されません。")
+            Text("解析画像と結果はクラウドへ永続保存しません。端末の一時画像は遅くとも1時間以内に削除します。")
             when (analysisState) {
                 ImageAnalysisState.Processing -> Text("送信画像を準備しています")
                 is ImageAnalysisState.Failed -> Text(analysisState.message)
