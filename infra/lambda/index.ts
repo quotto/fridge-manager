@@ -15,10 +15,15 @@ const retentionClient = new BedrockClient({ region: bedrockRegion || 'ap-northea
 // 初期化フェーズで検証を開始し、失敗は未処理rejectionにせずproviderをfail closedにする。
 const retentionModePromise = loadAccountDataRetentionMode(retentionClient).catch(() => undefined);
 const transport = new BedrockNovaTransport(new BedrockRuntimeClient({ region: bedrockRegion || 'ap-northeast-1' }));
+const telemetry = new EmfAnalysisTelemetry('FridgeManager/Analysis', process.env.ENVIRONMENT ?? 'unknown');
 const provider: AnalysisProvider = {
   async analyze(request) {
     const dataRetentionMode = await retentionModePromise;
-    return createNovaProvider({ region: bedrockRegion, modelId, allowedModes, dataRetentionMode: dataRetentionMode ?? '' }, transport).analyze(request);
+    return createNovaProvider(
+      { region: bedrockRegion, modelId, allowedModes, dataRetentionMode: dataRetentionMode ?? '' },
+      transport,
+      (usage) => telemetry.recordProviderUsage(usage),
+    ).analyze(request);
   },
 };
 const tableName = process.env.IDEMPOTENCY_TABLE_NAME;
@@ -32,6 +37,6 @@ const limits = {
 };
 const handler = createAnalysisHandler({
   provider, idempotencyStore: new DynamoIdempotencyStore(tableName), quotaStore: new DynamoQuotaStore(tableName, limits, undefined, undefined, controlTableName),
-  telemetry: new EmfAnalysisTelemetry('FridgeManager/Analysis', process.env.ENVIRONMENT ?? 'unknown'),
+  telemetry,
 });
 export async function main(event: APIGatewayProxyEvent) { return handler(event); }
