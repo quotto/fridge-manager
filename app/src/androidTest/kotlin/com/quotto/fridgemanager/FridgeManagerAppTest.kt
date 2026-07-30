@@ -93,6 +93,11 @@ class FridgeManagerAppTest {
             .assertIsDisplayed()
             .performClick()
         composeRule.onNodeWithText("単位を選択").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("単位 kg").performClick()
+        composeRule.onNodeWithContentDescription("単位、必須、現在値はkg").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("単位、必須、現在値はkg").performClick()
+        composeRule.onNodeWithContentDescription("単位選択から戻る").performClick()
+        composeRule.onNodeWithContentDescription("単位、必須、現在値はkg").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("設定タブ").assertIsDisplayed()
     }
 

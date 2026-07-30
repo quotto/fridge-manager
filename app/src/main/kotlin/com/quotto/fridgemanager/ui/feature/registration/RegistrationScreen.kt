@@ -42,7 +42,6 @@ import com.quotto.fridgemanager.presentation.registration.RegistrationPresenter
 import com.quotto.fridgemanager.presentation.registration.RegistrationResult
 import com.quotto.fridgemanager.presentation.registration.SuggestionResult
 import com.quotto.fridgemanager.ui.component.ScreenHeader
-import com.quotto.fridgemanager.ui.component.UnitSelectionField
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -52,9 +51,18 @@ fun RegistrationScreen(
     onBack: () -> Unit,
     onSaved: () -> Unit,
     onEditIngredient: (String) -> Unit,
+    selectedUnitResult: String? = null,
+    onUnitResultConsumed: () -> Unit = {},
+    onUnitSelection: (String) -> Unit = {},
 ) {
     var state by rememberSaveable(stateSaver = registrationFormStateSaver) {
         mutableStateOf(RegistrationFormState())
+    }
+    LaunchedEffect(selectedUnitResult) {
+        selectedUnitResult?.let {
+            state = state.copy(selectedUnitSymbol = it, errorField = null, errorMessage = null)
+            onUnitResultConsumed()
+        }
     }
 
     LaunchedEffect(state.name) {
@@ -107,7 +115,7 @@ fun RegistrationScreen(
             )
         },
         onQuantityChange = { state = state.copy(quantity = it, errorField = null, errorMessage = null) },
-        onUnitChange = { state = state.copy(selectedUnitSymbol = it, errorField = null, errorMessage = null) },
+        onUnitSelection = onUnitSelection,
         onSubmit = { submit() },
         onSelectExisting = { onEditIngredient(it.id) },
         onBack = onBack,
@@ -119,7 +127,7 @@ internal fun RegistrationContent(
     state: RegistrationFormState,
     onNameChange: (String) -> Unit,
     onQuantityChange: (String) -> Unit,
-    onUnitChange: (String) -> Unit,
+    onUnitSelection: (String) -> Unit,
     onSubmit: suspend () -> Unit,
     onSelectExisting: (com.quotto.fridgemanager.domain.inventory.StoredIngredient) -> Unit,
     onBack: () -> Unit = {},
@@ -162,9 +170,9 @@ internal fun RegistrationContent(
                 modifier = Modifier.fillMaxWidth().focusRequester(quantityFocus)
                     .semantics { contentDescription = "在庫数、必須" },
             )
-            UnitSelectionField(
+            UnitSelectionButton(
                 selectedSymbol = state.selectedUnitSymbol,
-                onSelected = onUnitChange,
+                onClick = { onUnitSelection(state.selectedUnitSymbol) },
             )
 
             state.errorMessage?.takeIf { state.errorField == null }?.let {

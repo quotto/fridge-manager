@@ -19,6 +19,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -29,11 +30,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
+import com.quotto.fridgemanager.domain.inventory.IngredientName
+import com.quotto.fridgemanager.domain.inventory.InventoryQuantity
+import com.quotto.fridgemanager.domain.inventory.InventoryUnit
 import com.quotto.fridgemanager.domain.inventory.StoredIngredient
 import com.quotto.fridgemanager.presentation.inventory.IngredientMutationResult
 import com.quotto.fridgemanager.presentation.inventory.IngredientUpdatePresenter
 import com.quotto.fridgemanager.ui.component.ScreenHeader
-import com.quotto.fridgemanager.ui.component.UnitSelectionField
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 
@@ -44,12 +47,18 @@ fun ExistingIngredientUpdateScreen(
     onBack: () -> Unit,
     onChanged: () -> Unit,
     onImageAnalysis: (String) -> Unit = {},
+    selectedUnitResult: String? = null,
+    onUnitResultConsumed: () -> Unit = {},
+    onUnitSelection: (String) -> Unit = {},
 ) {
-    var ingredient by remember(ingredientId) { mutableStateOf<StoredIngredient?>(null) }
-    var loaded by remember(ingredientId) { mutableStateOf(false) }
-    var failed by remember(ingredientId) { mutableStateOf(false) }
+    var ingredient by rememberSaveable(ingredientId, stateSaver = storedIngredientStateSaver) {
+        mutableStateOf<StoredIngredient?>(null)
+    }
+    var loaded by rememberSaveable(ingredientId) { mutableStateOf(false) }
+    var failed by rememberSaveable(ingredientId) { mutableStateOf(false) }
     var expectedVersion by rememberSaveable(ingredientId) { mutableStateOf<Long?>(null) }
-    LaunchedEffect(ingredientId) {
+    LaunchedEffect(ingredientId, loaded) {
+        if (loaded) return@LaunchedEffect
         try {
             ingredient = presenter.load(ingredientId)?.let { current ->
                 val sessionVersion = expectedVersion ?: current.updatedAtEpochMillis.also { expectedVersion = it }
@@ -64,7 +73,15 @@ fun ExistingIngredientUpdateScreen(
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(title = "在庫を更新", onBack = onBack)
         ingredient?.let {
-            IngredientUpdateContent(it, presenter, onChanged, onImageAnalysis)
+            IngredientUpdateContent(
+                it,
+                presenter,
+                onChanged,
+                onImageAnalysis,
+                selectedUnitResult,
+                onUnitResultConsumed,
+                onUnitSelection,
+            )
         } ?: Text(
             if (failed) "在庫を読み込めませんでした。戻って再試行してください"
             else if (loaded) "対象の在庫が見つかりません。戻って選び直してください" else "在庫を読み込んでいます",
@@ -79,6 +96,9 @@ private fun IngredientUpdateContent(
     presenter: IngredientUpdatePresenter,
     onChanged: () -> Unit,
     onImageAnalysis: (String) -> Unit,
+    selectedUnitResult: String?,
+    onUnitResultConsumed: () -> Unit,
+    onUnitSelection: (String) -> Unit,
 ) {
     var name by rememberSaveable(ingredient.id) { mutableStateOf(ingredient.name.value) }
     var quantity by rememberSaveable(ingredient.id) { mutableStateOf(ingredient.quantity.toString()) }
@@ -87,6 +107,13 @@ private fun IngredientUpdateContent(
     var saving by remember { mutableStateOf(false) }
     var showDelete by remember { mutableStateOf(false) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    LaunchedEffect(selectedUnitResult) {
+        selectedUnitResult?.let {
+            unit = it
+            message = null
+            onUnitResultConsumed()
+        }
+    }
 
     fun resultMessage(result: IngredientMutationResult): String? = when (result) {
         IngredientMutationResult.Saved, IngredientMutationResult.Deleted -> null
@@ -119,12 +146,9 @@ private fun IngredientUpdateContent(
                 contentDescription = "置換後の在庫数、必須"
             },
         )
-        UnitSelectionField(
+        UnitSelectionButton(
             selectedSymbol = unit,
-            onSelected = {
-                unit = it
-                message = null
-            },
+            onClick = { onUnitSelection(unit) },
         )
         Button(
             enabled = !saving,
@@ -160,3 +184,30 @@ private fun IngredientUpdateContent(
         },
     )
 }
+
+private val storedIngredientStateSaver = Saver<StoredIngredient?, List<Any?>>(
+    save = { ingredient ->
+        ingredient?.let {
+            listOf(
+                it.id,
+                it.name.value,
+                it.quantity.toString(),
+                it.unit.symbol,
+                it.createdAtEpochMillis,
+                it.updatedAtEpochMillis,
+            )
+        } ?: emptyList()
+    },
+    restore = { values ->
+        values.takeIf { it.size == 6 }?.let {
+            StoredIngredient(
+                id = it[0] as String,
+                name = IngredientName.from(it[1] as String),
+                quantity = InventoryQuantity.from(it[2] as String),
+                unit = InventoryUnit.fromSymbol(it[3] as String),
+                createdAtEpochMillis = it[4] as Long,
+                updatedAtEpochMillis = it[5] as Long,
+            )
+        }
+    },
+)

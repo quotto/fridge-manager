@@ -2,6 +2,7 @@ package com.quotto.fridgemanager.ui.feature.registration
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -66,6 +67,65 @@ class ExistingIngredientUpdateScreenTest {
     }
 
     @Test
+    fun 更新画面の単位ボタンは現在値を指定して別画面を要求する() {
+        val repository = UiUpdateRepository(ingredient())
+        var requestedUnit: String? = null
+        composeRule.setContent {
+            ExistingIngredientUpdateScreen(
+                "id",
+                IngredientUpdatePresenter(repository),
+                {},
+                {},
+                onUnitSelection = { requestedUnit = it },
+            )
+        }
+
+        composeRule.onNodeWithContentDescription("単位、必須、現在値は丁").performClick()
+
+        composeRule.runOnIdle { assertEquals("丁", requestedUnit) }
+        composeRule.onNodeWithText("単位を選択").assertDoesNotExist()
+    }
+
+    @Test
+    fun 単位選択画面から返された単位を更新画面へ反映する() {
+        val repository = UiUpdateRepository(ingredient())
+        var consumed = 0
+        composeRule.setContent {
+            ExistingIngredientUpdateScreen(
+                "id",
+                IngredientUpdatePresenter(repository),
+                {},
+                {},
+                selectedUnitResult = "kg",
+                onUnitResultConsumed = { consumed += 1 },
+            )
+        }
+
+        composeRule.onNodeWithContentDescription("単位、必須、現在値はkg").assertIsDisplayed()
+        composeRule.runOnIdle { assertEquals(1, consumed) }
+    }
+
+    @Test
+    fun 単位選択画面との往復後も読込済み在庫を保持する() {
+        val repository = UiUpdateRepository(ingredient())
+        val restorationTester = StateRestorationTester(composeRule)
+        restorationTester.setContent {
+            ExistingIngredientUpdateScreen(
+                "id",
+                IngredientUpdatePresenter(repository),
+                {},
+                {},
+            )
+        }
+        composeRule.onNodeWithContentDescription("単位、必須、現在値は丁").assertIsDisplayed()
+
+        restorationTester.emulateSavedInstanceStateRestore()
+
+        composeRule.onNodeWithContentDescription("単位、必須、現在値は丁").assertIsDisplayed()
+        composeRule.runOnIdle { assertEquals(1, repository.readCount) }
+    }
+
+    @Test
     fun 削除は取消不能を明示し確認後だけ実行する() {
         val repository = UiUpdateRepository(ingredient())
         composeRule.setContent {
@@ -87,9 +147,11 @@ class ExistingIngredientUpdateScreenTest {
 private class UiUpdateRepository(var item: StoredIngredient?) : InventoryRepository {
     var failReads = false
     var deleteCount = 0
+    var readCount = 0
     override suspend fun hasItems() = item != null
     override suspend fun getAll() = listOfNotNull(item)
     override suspend fun getById(id: String): StoredIngredient? {
+        readCount += 1
         if (failReads) error("secret database detail")
         return item?.takeIf { it.id == id }
     }
