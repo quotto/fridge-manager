@@ -48,7 +48,7 @@ class InventoryScreenTest {
     }
 
     @Test
-    fun 空状態の登録FABから登録方法を選択できる() {
+    fun 空状態の2つのFABから登録方法へ直接進める() {
         var manualClicks = 0
         var imageClicks = 0
         composeRule.setContent {
@@ -60,18 +60,14 @@ class InventoryScreenTest {
             )
         }
 
-        composeRule.onNodeWithText("手動で登録").assertDoesNotExist()
-        composeRule.onNodeWithText("画像から登録").assertDoesNotExist()
-        composeRule.onNodeWithContentDescription("食材を登録").performClick()
-        composeRule.onNodeWithText("登録方法を選択").assertIsDisplayed()
-        composeRule.onNodeWithText("手動で登録").performClick()
+        composeRule.onNodeWithText("登録方法を選択").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("食材を追加").performClick()
         composeRule.runOnIdle {
             assertEquals(1, manualClicks)
             assertEquals(0, imageClicks)
         }
 
-        composeRule.onNodeWithContentDescription("食材を登録").performClick()
-        composeRule.onNodeWithText("画像から登録").performClick()
+        composeRule.onNodeWithContentDescription("画像から食材を登録").performClick()
         composeRule.runOnIdle {
             assertEquals(1, manualClicks)
             assertEquals(1, imageClicks)
@@ -89,7 +85,10 @@ class InventoryScreenTest {
             )
         }
 
-        composeRule.onNodeWithContentDescription("食材を登録")
+        composeRule.onNodeWithContentDescription("食材を追加")
+            .assertIsDisplayed()
+            .assertHasClickAction()
+        composeRule.onNodeWithContentDescription("画像から食材を登録")
             .assertIsDisplayed()
             .assertHasClickAction()
     }

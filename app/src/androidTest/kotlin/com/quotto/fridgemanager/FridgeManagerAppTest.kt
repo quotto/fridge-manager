@@ -37,8 +37,7 @@ class FridgeManagerAppTest {
 
         composeRule.onNodeWithText("在庫一覧").assertIsDisplayed()
         composeRule.onNodeWithText("食材がありません").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("食材を登録").performClick()
-        composeRule.onNodeWithText("手動で登録").performClick()
+        composeRule.onNodeWithContentDescription("食材を追加").performClick()
         composeRule.onNodeWithText("手動登録").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("在庫一覧タブ").assertIsSelected()
     }
@@ -47,8 +46,8 @@ class FridgeManagerAppTest {
     fun 空の在庫一覧から画像解析へ遷移できる() {
         launchApp()
 
-        composeRule.onNodeWithContentDescription("食材を登録").performClick()
-        composeRule.onNodeWithText("画像から登録").performClick()
+        composeRule.onNodeWithContentDescription("画像解析タブ").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("画像から食材を登録").performClick()
         composeRule.onNodeWithText("画像解析").assertIsDisplayed()
     }
 
@@ -64,8 +63,7 @@ class FridgeManagerAppTest {
     fun 手動登録から在庫一覧へ戻れる() {
         launchApp()
 
-        composeRule.onNodeWithContentDescription("食材を登録").performClick()
-        composeRule.onNodeWithText("手動で登録").performClick()
+        composeRule.onNodeWithContentDescription("食材を追加").performClick()
         composeRule.onNodeWithContentDescription("在庫一覧へ戻る").performClick()
         composeRule.onNodeWithText("食材がありません").assertIsDisplayed()
     }
@@ -83,12 +81,10 @@ class FridgeManagerAppTest {
             }
         }
 
-        composeRule.onNodeWithContentDescription("食材を登録")
+        composeRule.onNodeWithContentDescription("食材を追加")
             .assertIsDisplayed()
             .assertHasClickAction()
             .performClick()
-        composeRule.onNodeWithText("登録方法を選択").assertIsDisplayed()
-        composeRule.onNodeWithText("手動で登録").performClick()
         composeRule.onNodeWithContentDescription("単位、必須、現在値は個")
             .assertIsDisplayed()
             .performClick()
