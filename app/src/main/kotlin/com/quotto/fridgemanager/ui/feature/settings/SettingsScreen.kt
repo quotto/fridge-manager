@@ -28,7 +28,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalUriHandler
 import kotlinx.coroutines.launch
 
-private const val PRIVACY_POLICY_URL = "https://quotto.github.io/fridge-manager/privacy-policy.html"
+internal object PrivacyLinks {
+    const val policy = "https://quotto.github.io/fridge-manager/privacy-policy.html"
+    const val dataDeletion = "https://quotto.github.io/fridge-manager/data-deletion.html"
+}
 
 @Composable
 fun SettingsScreen(coordinator: DataDeletionCoordinator) {
@@ -41,7 +44,8 @@ fun SettingsScreen(coordinator: DataDeletionCoordinator) {
         onConfirmDeletion = { scope.launch { coordinator.confirmDeletion() } },
         onDismissDeletion = coordinator::dismissConfirmation,
         onRetryDeletion = { scope.launch { coordinator.retry() } },
-        onOpenPrivacyPolicy = { uriHandler.openUri(PRIVACY_POLICY_URL) },
+        onOpenPrivacyPolicy = { uriHandler.openUri(PrivacyLinks.policy) },
+        onOpenDataDeletionGuide = { uriHandler.openUri(PrivacyLinks.dataDeletion) },
     )
 }
 
@@ -53,6 +57,7 @@ fun SettingsContent(
     onDismissDeletion: () -> Unit,
     onRetryDeletion: () -> Unit,
     onOpenPrivacyPolicy: () -> Unit,
+    onOpenDataDeletionGuide: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(title = "設定")
@@ -74,6 +79,9 @@ fun SettingsContent(
             Text("アプリケーションログは本番環境で90日保持し、画像・在庫・トークン・匿名ユーザーIDを記録しません。")
             OutlinedButton(onClick = onOpenPrivacyPolicy, modifier = Modifier.fillMaxWidth()) {
                 Text("プライバシーポリシーを開く")
+            }
+            OutlinedButton(onClick = onOpenDataDeletionGuide, modifier = Modifier.fillMaxWidth()) {
+                Text("アプリ外の削除案内を開く")
             }
             Text("アプリのデータ消去またはアンインストール後、端末内データは復元できません。")
             Text("利用データの削除")
