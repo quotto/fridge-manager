@@ -14,7 +14,8 @@ class SettingsScreenTest {
 
     @Test
     fun 収集送信保持削除の実態をアプリ内で説明する() {
-        var opened = 0
+        var policyOpened = 0
+        var deletionGuideOpened = 0
         composeRule.setContent {
             SettingsContent(
                 deletionState = DataDeletionState.Idle,
@@ -22,7 +23,8 @@ class SettingsScreenTest {
                 onConfirmDeletion = {},
                 onDismissDeletion = {},
                 onRetryDeletion = {},
-                onOpenPrivacyPolicy = { opened += 1 },
+                onOpenPrivacyPolicy = { policyOpened += 1 },
+                onOpenDataDeletionGuide = { deletionGuideOpened += 1 },
             )
         }
 
@@ -43,7 +45,14 @@ class SettingsScreenTest {
             .performScrollTo()
             .assertIsDisplayed()
             .performClick()
-        composeRule.runOnIdle { check(opened == 1) }
+        composeRule.onNodeWithText("アプリ外の削除案内を開く")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .performClick()
+        composeRule.runOnIdle {
+            check(policyOpened == 1)
+            check(deletionGuideOpened == 1)
+        }
     }
 
     @Test
@@ -57,6 +66,7 @@ class SettingsScreenTest {
                 onDismissDeletion = {},
                 onRetryDeletion = {},
                 onOpenPrivacyPolicy = {},
+                onOpenDataDeletionGuide = {},
             )
         }
 
@@ -74,6 +84,7 @@ class SettingsScreenTest {
                 onDismissDeletion = {},
                 onRetryDeletion = {},
                 onOpenPrivacyPolicy = {},
+                onOpenDataDeletionGuide = {},
             )
         }
 
@@ -96,11 +107,12 @@ class SettingsScreenTest {
                 onDismissDeletion = {},
                 onRetryDeletion = {},
                 onOpenPrivacyPolicy = {},
+                onOpenDataDeletionGuide = {},
             )
         }
 
-        composeRule.onNodeWithText("端末データ: 削除済み").assertIsDisplayed()
-        composeRule.onNodeWithText("匿名ユーザー: 未完了").assertIsDisplayed()
-        composeRule.onNodeWithText("未完了の削除を再試行").assertIsDisplayed()
+        composeRule.onNodeWithText("端末データ: 削除済み").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("匿名ユーザー: 未完了").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("未完了の削除を再試行").performScrollTo().assertIsDisplayed()
     }
 }

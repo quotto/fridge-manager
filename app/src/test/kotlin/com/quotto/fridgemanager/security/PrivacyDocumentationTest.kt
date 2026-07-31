@@ -7,6 +7,7 @@ import org.junit.Test
 
 class PrivacyDocumentationTest {
     private val policy = File("../docs/privacy-policy.html").readText()
+    private val deletionGuide = File("../docs/data-deletion.html").readText()
     private val dataSafety = File("../docs/data-safety.md").readText()
 
     @Test
@@ -43,9 +44,37 @@ class PrivacyDocumentationTest {
         )
             .forEach { required -> assertTrue(required, dataSafety.contains(required)) }
         assertTrue(policy.contains("https://quotto.github.io/fridge-manager/privacy-policy.html"))
+        assertTrue(policy.contains("https://quotto.github.io/fridge-manager/data-deletion.html"))
         assertFalse(policy.contains("一時データも遅くとも1時間以内"))
-        // 公開前にこの2項目を実値へ置換し、HTTP smoke testをIssueへ記録する。
-        assertTrue(policy.contains("施行日・最終更新日"))
-        assertTrue(policy.contains("運営者・問い合わせ先"))
+        assertTrue(policy.contains("施行日: 2026年8月1日"))
+        assertTrue(policy.contains("https://docs.google.com/forms/d/e/PLACEHOLDER/viewform"))
+        assertFalse(policy.contains("公開時に記載"))
+        assertFalse(policy.contains("公開前に"))
+        assertFalse(policy.contains("公開主体名"))
+        assertTrue(policy.contains("入出力token数"))
+        assertTrue(policy.contains("モデルID"))
+        assertTrue(policy.contains("provider呼出し有無"))
+        assertTrue(policy.contains("ペイロードの不可逆hash"))
+        assertTrue(dataSafety.contains("モデルID、入出力token数"))
+        assertTrue(dataSafety.contains("provider呼出し有無"))
+        assertTrue(dataSafety.contains("アプリ起動・利用時に必須"))
+        assertFalse(dataSafety.contains("Firebase匿名IDとAWS上の不可逆hash。認証情報"))
+    }
+
+    @Test
+    fun `削除案内は公開URLとアプリ内外の削除方法を説明する`() {
+        listOf(
+            "https://quotto.github.io/fridge-manager/data-deletion.html",
+            "設定画面",
+            "端末内の全食材データ",
+            "一時画像",
+            "Firebase匿名ユーザー",
+            "最大180日",
+            "最大30日",
+            "90日",
+            "https://docs.google.com/forms/d/e/PLACEHOLDER/viewform",
+        ).forEach { required -> assertTrue(required, deletionGuide.contains(required)) }
+        assertFalse(deletionGuide.contains("公開主体名"))
+        assertFalse(deletionGuide.contains("公開前に"))
     }
 }
