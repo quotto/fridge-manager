@@ -39,7 +39,7 @@ IPアドレス、User-Agent、attestation情報はFirebase、Google Play Integri
 
 - [x] 施行日（2026年8月1日）、公開主体名を表示しない方針、問い合わせ用Googleフォーム仮URLをHTMLへ反映
 - [x] GitHub Pagesを有効化し、`https://quotto.github.io/fridge-manager/privacy-policy.html` のHTTP 200を確認
-- [ ] `https://quotto.github.io/fridge-manager/data-deletion.html` の公開後にHTTP 200を確認
+- [x] `https://quotto.github.io/fridge-manager/data-deletion.html` の公開後にHTTP 200を確認
 - [ ] プライバシーポリシーと削除案内のアプリ内リンクを実機確認
 - [ ] Firebase Authenticationの匿名ユーザー自動クリーンアップ設定
 - [ ] 最新のPlay Console Data safetyフォームへ本表を転記し、回答証跡をIssueへ記録
