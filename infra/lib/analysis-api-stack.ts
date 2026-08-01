@@ -273,6 +273,7 @@ export class AnalysisApiStack extends Stack {
     if (!post) throw new Error('OpenAPIにPOST /v1/analysisがありません');
     components.securitySchemes = { FirebaseAuthorizer: {
       type: 'apiKey', name: 'Authorization', in: 'header',
+      'x-amazon-apigateway-authtype': 'custom',
       'x-amazon-apigateway-authorizer': {
         type: 'request', authorizerResultTtlInSeconds: 0,
         identitySource: 'method.request.header.Authorization,method.request.header.X-Firebase-AppCheck',
