@@ -76,12 +76,13 @@ class CandidateReviewScreenTest {
 
         composeRule.onNodeWithText("在庫に一括反映する").assertIsEnabled()
         composeRule.onNodeWithText("候補を追加する").performClick()
+        composeRule.onRoot().performTouchInput { swipeUp() }
         composeRule.onNodeWithText("在庫に一括反映する").assertIsNotEnabled()
 
         composeRule.onAllNodesWithText("食材名")[1].performTextInput("牛乳")
         composeRule.onAllNodesWithText("推定数量")[1].performTextInput("1")
-        composeRule.onNodeWithText("単位を選択（未入力）").performClick()
-        composeRule.onNodeWithText("本").performClick()
+        composeRule.onNodeWithContentDescription("単位、必須、未入力").performClick()
+        composeRule.onNodeWithContentDescription("単位 本").performClick()
         composeRule.onNodeWithText("在庫に一括反映する").assertIsEnabled()
 
         composeRule.onAllNodesWithText("除外する")[1].performClick()
@@ -89,6 +90,7 @@ class CandidateReviewScreenTest {
         composeRule.onNodeWithText("在庫に一括反映する").assertIsEnabled()
         composeRule.onNodeWithText("候補に戻す").performClick()
         composeRule.onAllNodesWithText("食材名")[1].assertIsDisplayed()
+        composeRule.onRoot().performTouchInput { swipeUp() }
         composeRule.onNodeWithText("在庫に一括反映する").assertIsEnabled()
     }
 

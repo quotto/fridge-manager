@@ -25,11 +25,10 @@ class AppDestinationTest {
     }
 
     @Test
-    fun `手動登録は在庫一覧から開く子画面として下部ナビゲーションに表示しない`() {
+    fun `登録画面は在庫一覧から開く子画面として下部ナビゲーションに表示しない`() {
         assertEquals(
             listOf(
                 AppDestination.Inventory,
-                AppDestination.ImageAnalysis,
                 AppDestination.Settings,
             ),
             AppDestination.topLevel,
@@ -37,6 +36,10 @@ class AppDestinationTest {
         assertEquals(
             AppDestination.Inventory,
             AppDestination.selectedTopLevel(AppDestination.Registration.route),
+        )
+        assertEquals(
+            AppDestination.Inventory,
+            AppDestination.selectedTopLevel(AppDestination.ImageAnalysis.route),
         )
     }
 }

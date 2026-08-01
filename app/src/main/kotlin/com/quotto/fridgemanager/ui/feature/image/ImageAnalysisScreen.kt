@@ -63,9 +63,9 @@ typealias ImageInputAsset = com.quotto.fridgemanager.image.ImageInputAsset
 
 @Composable
 fun ImageAnalysisScreen(
-    onManualRegistration: () -> Unit,
     candidateReviewPresenter: CandidateReviewPresenter,
     onCandidatesValidated: (List<ReviewedCandidate>) -> Unit,
+    onManualFallback: () -> Unit,
     updateIngredient: StoredIngredient? = null,
     aiUpdateCandidatePresenter: AiUpdateCandidatePresenter? = null,
     onUpdateSaved: () -> Unit = {},
@@ -194,7 +194,7 @@ fun ImageAnalysisScreen(
             sending = currentAnalysisState is ImageAnalysisState.Sending || currentAnalysisState is ImageAnalysisState.Analyzing,
             analyzing = currentAnalysisState is ImageAnalysisState.Analyzing,
             failure = currentAnalysisState as? ImageAnalysisState.Failed,
-            onManualRegistration = onManualRegistration,
+            onManualFallback = onManualFallback,
         )
         return
     }
@@ -225,7 +225,6 @@ fun ImageAnalysisScreen(
                 cameraMessage = CameraMessage.Unavailable
             }
         },
-        onManualRegistration = { analysis.cancel(); onManualRegistration() },
         onOpenCameraSettings = {
             val intent = Intent(Settings.ACTION_SETTINGS)
             if (intent.resolveActivity(context.packageManager) != null) {
@@ -278,7 +277,6 @@ fun ImageInputContent(
     hasSelection: Boolean,
     onPickImage: () -> Unit,
     onTakePhoto: () -> Unit,
-    onManualRegistration: () -> Unit,
     onDiscardSelection: () -> Unit,
     onOpenCameraSettings: () -> Unit,
     onUseSelection: () -> Unit = {},
@@ -309,9 +307,6 @@ fun ImageInputContent(
             OutlinedButton(onClick = onTakePhoto, modifier = Modifier.fillMaxWidth()) {
                 Text("写真を撮る")
             }
-            OutlinedButton(onClick = onManualRegistration, modifier = Modifier.fillMaxWidth()) {
-                Text("手動で登録する")
-            }
             if (hasSelection) {
                 Text("画像を1枚選択しました")
                 Button(
@@ -334,10 +329,10 @@ fun ImagePreviewContent(
     image: PreprocessedImage,
     onSend: () -> Unit,
     onReselect: () -> Unit,
+    onManualFallback: () -> Unit = {},
     sending: Boolean = false,
     analyzing: Boolean = false,
     failure: ImageAnalysisState.Failed? = null,
-    onManualRegistration: () -> Unit = {},
 ) {
     val bitmap by produceState<Bitmap?>(null, image.file) {
         value = withContext(Dispatchers.IO) { decodePreview(image.file.path) }
@@ -379,8 +374,8 @@ fun ImagePreviewContent(
                 Text(if (sending) "キャンセル" else "選び直す")
             }
             if (failure != null) {
-                OutlinedButton(onClick = onManualRegistration, modifier = Modifier.fillMaxWidth()) {
-                    Text("手動で登録する")
+                OutlinedButton(onClick = onManualFallback, modifier = Modifier.fillMaxWidth()) {
+                    Text("手動入力に切り替える")
                 }
             }
         }
