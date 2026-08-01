@@ -1,9 +1,9 @@
 import type { ConverseCommandInput } from '@aws-sdk/client-bedrock-runtime';
 import { AnalysisError, AnalysisProvider, AnalysisRequest } from './analysis-handler';
+import { NOVA_MODEL_ID, NOVA_REGION } from './nova-model';
 import { FOOD_UNITS, validateProviderResult } from './provider-boundary';
 
-export const NOVA_MODEL_ID = 'jp.amazon.nova-2-lite-v1:0';
-export const NOVA_REGION = 'ap-northeast-1';
+export { NOVA_MODEL_ID, NOVA_REGION } from './nova-model';
 export const RESULT_TOOL_NAME = 'report_food_candidates';
 export const NOVA_WARNING_CODES = ['LOW_LIGHT', 'OCCLUDED', 'QUANTITY_UNKNOWN', 'LABEL_UNREADABLE'] as const;
 
@@ -18,6 +18,13 @@ export interface NovaProviderConfig {
 
 export interface NovaTransport {
   converse(input: ConverseCommandInput): Promise<unknown>;
+}
+export interface NovaProviderUsage {
+  readonly modelId: string;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly attempts: number;
+  readonly requestId: string;
 }
 
 const candidateSchema = {
@@ -86,20 +93,44 @@ function safeConfiguration(config: NovaProviderConfig): boolean {
     config.allowedModes.includes('none') && config.dataRetentionMode === 'none';
 }
 
+function safeTokenCount(value: unknown): number {
+  return Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= 10_000_000
+    ? value as number
+    : 0;
+}
+
 /** Geo・保持条件をfail-closed検証し、schema不正時だけ一度再試行する。 */
-export function createNovaProvider(config: NovaProviderConfig, transport: NovaTransport): AnalysisProvider {
+export function createNovaProvider(
+  config: NovaProviderConfig,
+  transport: NovaTransport,
+  recordUsage: (usage: NovaProviderUsage) => void = () => undefined,
+): AnalysisProvider {
   return {
     async analyze(request: AnalysisRequest): Promise<unknown> {
       if (!safeConfiguration(config)) throw new AnalysisError('PROVIDER_UNAVAILABLE', 503);
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        const input = buildConverseInput(config, request, attempt === 1);
-        let raw: unknown;
-        try { raw = await transport.converse(input); }
-        catch { throw new AnalysisError('PROVIDER_UNAVAILABLE', 503); }
-        const result = validateProviderResult(extractResult(raw, request.requestId), request.requestId);
-        if (result) return result;
+      let attempts = 0;
+      let inputTokens = 0;
+      let outputTokens = 0;
+      try {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const input = buildConverseInput(config, request, attempt === 1);
+          let raw: unknown;
+          attempts += 1;
+          try { raw = await transport.converse(input); }
+          catch { throw new AnalysisError('PROVIDER_UNAVAILABLE', 503); }
+          const usage = raw && typeof raw === 'object' ? (raw as { usage?: unknown }).usage : undefined;
+          if (usage && typeof usage === 'object' && !Array.isArray(usage)) {
+            inputTokens += safeTokenCount((usage as { inputTokens?: unknown }).inputTokens);
+            outputTokens += safeTokenCount((usage as { outputTokens?: unknown }).outputTokens);
+          }
+          const result = validateProviderResult(extractResult(raw, request.requestId), request.requestId);
+          if (result) return result;
+        }
+        throw new AnalysisError('UNANALYZABLE_IMAGE', 422);
+      } finally {
+        try { recordUsage({ modelId: config.modelId, inputTokens, outputTokens, attempts, requestId: request.requestId }); }
+        catch { /* 観測障害でprovider結果を失敗させない。 */ }
       }
-      throw new AnalysisError('UNANALYZABLE_IMAGE', 422);
     },
   };
 }

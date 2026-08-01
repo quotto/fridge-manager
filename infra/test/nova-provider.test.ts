@@ -19,8 +19,11 @@ const validCandidate = {
   name: '牛乳', quantity: '1', unit: '本', evidence: 'VISIBLE_COUNT', requiresReview: false,
 };
 
-function converseResponse(input: unknown = { candidates: [validCandidate], warnings: [] }): unknown {
-  return { output: { message: { content: [{ toolUse: { toolUseId: 'tool-use-1', name: 'report_food_candidates', input } }] } } };
+function converseResponse(
+  input: unknown = { candidates: [validCandidate], warnings: [] },
+  usage: unknown = { inputTokens: 100, outputTokens: 20, totalTokens: 120 },
+): unknown {
+  return { output: { message: { content: [{ toolUse: { toolUseId: 'tool-use-1', name: 'report_food_candidates', input } }] } }, usage };
 }
 
 function transport(result: unknown = converseResponse()): jest.Mocked<NovaTransport> {
@@ -188,6 +191,75 @@ describe('Nova Converse入出力契約', () => {
     expect(bedrock.converse).toHaveBeenCalledTimes(2);
     expect(bedrock.converse.mock.calls[0]?.[0]).not.toEqual(bedrock.converse.mock.calls[1]?.[0]);
     expect(JSON.stringify(bedrock.converse.mock.calls[1]?.[0])).toContain('schema不適合');
+  });
+
+  it('schema再試行を含む全Converse応答の入出力tokenと試行回数を合算する', async () => {
+    const invalid = { candidates: [{ ...validCandidate, unit: 'ケース' }], warnings: [] };
+    const bedrock = transport();
+    bedrock.converse
+      .mockResolvedValueOnce(converseResponse(invalid, { inputTokens: 100, outputTokens: 10, totalTokens: 110 }))
+      .mockResolvedValueOnce(converseResponse(undefined, { inputTokens: 120, outputTokens: 20, totalTokens: 140 }));
+    const recordUsage = jest.fn();
+    const provider = createNovaProvider(validConfig, bedrock, recordUsage);
+
+    await provider.analyze(request);
+
+    expect(recordUsage).toHaveBeenCalledTimes(1);
+    expect(recordUsage).toHaveBeenCalledWith({
+      modelId: 'jp.amazon.nova-2-lite-v1:0',
+      inputTokens: 220,
+      outputTokens: 30,
+      attempts: 2,
+      requestId: request.requestId,
+    });
+  });
+
+  it('Bedrock通信障害でもtoken本文や例外を渡さず試行回数だけ記録する', async () => {
+    const bedrock = transport();
+    bedrock.converse.mockRejectedValue(new Error('secret provider token'));
+    const recordUsage = jest.fn();
+    const provider = createNovaProvider(validConfig, bedrock, recordUsage);
+
+    await expect(provider.analyze(request)).rejects.toMatchObject({ code: 'PROVIDER_UNAVAILABLE' });
+
+    expect(recordUsage).toHaveBeenCalledWith({
+      modelId: 'jp.amazon.nova-2-lite-v1:0',
+      inputTokens: 0,
+      outputTokens: 0,
+      attempts: 1,
+      requestId: request.requestId,
+    });
+    expect(JSON.stringify(recordUsage.mock.calls)).not.toContain('secret provider token');
+  });
+
+  it('不正なusageはtoken合計へ含めず有限整数だけを観測境界へ渡す', async () => {
+    const bedrock = transport(converseResponse(undefined, {
+      inputTokens: -1, outputTokens: 'secret token value', totalTokens: Number.POSITIVE_INFINITY,
+    }));
+    const recordUsage = jest.fn();
+    const provider = createNovaProvider(validConfig, bedrock, recordUsage);
+
+    await provider.analyze(request);
+
+    expect(recordUsage).toHaveBeenCalledWith({
+      modelId: 'jp.amazon.nova-2-lite-v1:0',
+      inputTokens: 0,
+      outputTokens: 0,
+      attempts: 1,
+      requestId: request.requestId,
+    });
+    expect(JSON.stringify(recordUsage.mock.calls)).not.toContain('secret token value');
+  });
+
+  it('telemetry callback障害でも有効なprovider結果を返す', async () => {
+    const provider = createNovaProvider(validConfig, transport(), () => {
+      throw new Error('telemetry unavailable');
+    });
+
+    await expect(provider.analyze(request)).resolves.toMatchObject({
+      requestId: request.requestId,
+      status: 'succeeded',
+    });
   });
 
   it('絶対値予測には現在在庫を不要としてBedrockへ送らない', async () => {
