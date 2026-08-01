@@ -7,6 +7,7 @@ import org.junit.Test
 
 class AndroidCompatibilityWorkflowTest {
     private val workflow = File("../.github/workflows/android-compatibility.yml").readText()
+    private val sanitizer = File("../.github/scripts/sanitize-android-test-results.mjs").readText()
 
     @Test
     fun `Android 11から17の各世代を代表するAPIでinstrumentationを実行する`() {
@@ -37,5 +38,15 @@ class AndroidCompatibilityWorkflowTest {
         assertTrue(workflow.contains("if-no-files-found: error"))
         assertTrue(!workflow.contains("path: app/build/outputs/androidTest-results/connected/"))
         assertTrue(!workflow.contains("path: app/build/reports/androidTests/connected/"))
+    }
+
+    @Test
+    fun `証跡はテストごとの固定ステータスだけを保存して失敗本文を保存しない`() {
+        assertTrue(sanitizer.contains("status:"))
+        listOf("passed", "failed", "error", "skipped").forEach { status ->
+            assertTrue(sanitizer.contains("'$status'"))
+        }
+        assertTrue(!sanitizer.contains("body:"))
+        assertTrue(!sanitizer.contains("stackTrace"))
     }
 }

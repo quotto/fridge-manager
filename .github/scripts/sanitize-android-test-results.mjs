@@ -25,10 +25,18 @@ const suites = xmlFiles(sourceRoot).flatMap((path) => {
   const xml = readFileSync(path, 'utf8');
   const suiteTag = /<testsuite\b[^>]*>/.exec(xml)?.[0];
   if (!suiteTag) return [];
-  const cases = [...xml.matchAll(/<testcase\b[^>]*>/g)].map(([tag]) => ({
-    className: attribute(tag, 'classname'),
-    name: attribute(tag, 'name'),
-  }));
+  const cases = [...xml.matchAll(/<testcase\b([^>]*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g)]
+    .map(([, attributes, body = '']) => ({
+      className: attribute(attributes, 'classname'),
+      name: attribute(attributes, 'name'),
+      status: body.includes('<failure')
+        ? 'failed'
+        : body.includes('<error')
+          ? 'error'
+          : body.includes('<skipped')
+            ? 'skipped'
+            : 'passed',
+    }));
   return [{
     name: attribute(suiteTag, 'name'),
     tests: Number(attribute(suiteTag, 'tests') ?? 0),
