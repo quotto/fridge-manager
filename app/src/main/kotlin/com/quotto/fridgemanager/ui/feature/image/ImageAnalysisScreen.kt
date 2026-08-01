@@ -343,7 +343,10 @@ fun ImagePreviewContent(
     val bitmap by produceState<Bitmap?>(null, image.file) {
         value = withContext(Dispatchers.IO) { decodePreview(image.file.path) }
     }
-    DisposableEffect(bitmap) { onDispose { bitmap?.recycle() } }
+    DisposableEffect(bitmap) {
+        val bitmapToRecycle = bitmap
+        onDispose { bitmapToRecycle?.recycle() }
+    }
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(title = "送信画像の確認")
         Column(
