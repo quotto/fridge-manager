@@ -42,6 +42,12 @@ describe('cloud deployment workflow', () => {
     expect(workflow).toContain('bash .github/scripts/deploy-cloud.sh prod');
   });
 
+  it('staging smokeはdeploy roleではなく最小権限operations roleで実行する', () => {
+    expect(workflow).toContain('Configure staging operations credentials');
+    expect(workflow).toContain('role-to-assume: ${{ vars.AWS_OPERATIONS_ROLE_ARN }}');
+    expect(workflow.indexOf('Configure staging operations credentials')).toBeLessThan(workflow.indexOf('Smoke test staging'));
+  });
+
   it('deploy scriptは自動rollbackを無効化できない', () => {
     const script = read('.github/scripts/deploy-cloud.sh');
     expect(script).toContain('--rollback');
@@ -53,6 +59,15 @@ describe('cloud deployment workflow', () => {
     expect(accountGuard).toContain('actual_account" == "$AWS_ACCOUNT_ID');
     expect(workflow).toContain('Verify production plan AWS account');
     expect(read('.github/workflows/rollback-release.yml')).toContain('bash .github/scripts/verify-aws-account.sh');
+  });
+
+  it('stgの失敗済みAPI stackだけを再deploy前に削除する', () => {
+    const script = read('.github/scripts/deploy-cloud.sh');
+    expect(script).toContain('ROLLBACK_COMPLETE');
+    expect(script).toContain('aws cloudformation delete-stack --stack-name "$api_stack"');
+    expect(script).toContain('aws cloudformation wait stack-delete-complete --stack-name "$api_stack"');
+    expect(script).toContain('[[ "$environment" == stg ]]');
+    expect(script).not.toContain('delete-stack --stack-name "$foundation"');
   });
 
   it('既存AWS予算通知先を運用通知secretとして再利用する', () => {

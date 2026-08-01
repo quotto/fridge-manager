@@ -60,6 +60,11 @@ jobs:
         run: npx cdk diff FridgeManagerStgFoundation FridgeManagerStgFoundationAnalysisApi --app .promotion/cdk.out --exclusively
       - name: Deploy staging with CloudFormation rollback
         run: bash .github/scripts/deploy-cloud.sh stg .promotion/cdk.out
+      - name: Configure staging operations credentials
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4
+        with:
+          role-to-assume: ${{ vars.AWS_OPERATIONS_ROLE_ARN }}
+          aws-region: ap-northeast-1
       - name: Smoke test staging
         run: bash .github/scripts/smoke-cloud.sh stg
       - name: Preserve digested promotion assembly
@@ -75,6 +80,7 @@ jobs:
   production-plan:
     needs: staging
     name: Review production CloudFormation diff
+    if: vars.PRODUCTION_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: production-plan
@@ -90,6 +96,8 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: "22", cache: npm }
       - run: npm ci --ignore-scripts
+      - name: Reject every production high-severity vulnerability
+        run: npm audit --audit-level=high --ignore-scripts
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: cdk-promotion-${{ github.event.workflow_run.head_sha || github.sha }}
@@ -107,6 +115,7 @@ jobs:
   production:
     name: Approve, deploy and smoke test production
     needs: production-plan
+    if: vars.PRODUCTION_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: production

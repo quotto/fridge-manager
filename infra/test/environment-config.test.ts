@@ -13,16 +13,19 @@ describe('環境設定', () => {
   it('環境ごとにログ保持と削除保護を強化する', () => {
     expect(getEnvironmentConfig('dev')).toMatchObject({
       logRetentionDays: 14,
+      apiIntegrationTimeoutMillis: 29_000,
       retainData: false,
       terminationProtection: false,
     });
     expect(getEnvironmentConfig('stg')).toMatchObject({
       logRetentionDays: 30,
+      apiIntegrationTimeoutMillis: 29_000,
       retainData: false,
       terminationProtection: false,
     });
     expect(getEnvironmentConfig('prod')).toMatchObject({
       logRetentionDays: 90,
+      apiIntegrationTimeoutMillis: 60_000,
       retainData: true,
       terminationProtection: true,
     });
