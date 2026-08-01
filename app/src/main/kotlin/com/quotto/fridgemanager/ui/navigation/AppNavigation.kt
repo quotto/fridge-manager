@@ -8,6 +8,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -23,6 +24,7 @@ import com.quotto.fridgemanager.ui.feature.image.ImageAnalysisScreen
 import com.quotto.fridgemanager.ui.feature.inventory.InventoryScreen
 import com.quotto.fridgemanager.ui.feature.registration.RegistrationScreen
 import com.quotto.fridgemanager.ui.feature.registration.ExistingIngredientUpdateScreen
+import com.quotto.fridgemanager.ui.feature.registration.UnitSelectionScreen
 import com.quotto.fridgemanager.ui.feature.settings.SettingsScreen
 import com.quotto.fridgemanager.domain.analysis.AnalysisClient
 import com.quotto.fridgemanager.domain.analysis.AnalysisApiRequest
@@ -86,7 +88,10 @@ fun AppNavigation(
                     onEditIngredient = { controller.navigate(AppDestination.existingUpdateRoute(it)) },
                 )
             }
-            composable(AppDestination.Registration.route) {
+            composable(AppDestination.Registration.route) { entry ->
+                val selectedUnitResult by entry.savedStateHandle
+                    .getStateFlow<String?>(UNIT_SELECTION_RESULT_KEY, null)
+                    .collectAsStateWithLifecycle()
                 RegistrationScreen(
                     presenter = registrationPresenter,
                     onBack = {
@@ -102,9 +107,19 @@ fun AppNavigation(
                     onEditIngredient = {
                         controller.navigate(AppDestination.existingUpdateRoute(it))
                     },
+                    selectedUnitResult = selectedUnitResult,
+                    onUnitResultConsumed = {
+                        entry.savedStateHandle[UNIT_SELECTION_RESULT_KEY] = null
+                    },
+                    onUnitSelection = {
+                        controller.navigate(AppDestination.unitSelectionRoute(it))
+                    },
                 )
             }
             composable(AppDestination.existingUpdatePattern) { entry ->
+                val selectedUnitResult by entry.savedStateHandle
+                    .getStateFlow<String?>(UNIT_SELECTION_RESULT_KEY, null)
+                    .collectAsStateWithLifecycle()
                 ExistingIngredientUpdateScreen(
                     ingredientId = entry.arguments?.getString("ingredientId").orEmpty(),
                     presenter = ingredientUpdatePresenter,
@@ -114,6 +129,32 @@ fun AppNavigation(
                         controller.popBackStack()
                     },
                     onImageAnalysis = { controller.navigate(AppDestination.updateImageRoute(it)) },
+                    selectedUnitResult = selectedUnitResult,
+                    onUnitResultConsumed = {
+                        entry.savedStateHandle[UNIT_SELECTION_RESULT_KEY] = null
+                    },
+                    onUnitSelection = {
+                        controller.navigate(AppDestination.unitSelectionRoute(it))
+                    },
+                )
+            }
+            composable(AppDestination.unitSelectionPattern) { entry ->
+                val selectedUnit = entry.arguments?.getString("selectedUnit")
+                    ?.takeIf { symbol ->
+                        runCatching {
+                            com.quotto.fridgemanager.domain.inventory.InventoryUnit.fromSymbol(symbol)
+                        }.isSuccess
+                    }
+                    ?: com.quotto.fridgemanager.domain.inventory.InventoryUnit.PIECE.symbol
+                UnitSelectionScreen(
+                    selectedSymbol = selectedUnit,
+                    onBack = { controller.popBackStack() },
+                    onSelected = {
+                        controller.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set(UNIT_SELECTION_RESULT_KEY, it)
+                        controller.popBackStack()
+                    },
                 )
             }
             composable(AppDestination.ImageAnalysis.route) {
@@ -189,3 +230,5 @@ fun AppNavigation(
         }
     }
 }
+
+private const val UNIT_SELECTION_RESULT_KEY = "selected-unit-result"

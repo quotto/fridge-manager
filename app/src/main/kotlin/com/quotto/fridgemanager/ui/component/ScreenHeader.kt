@@ -21,6 +21,7 @@ fun ScreenHeader(
     title: String,
     modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null,
+    backContentDescription: String = "在庫一覧へ戻る",
 ) {
     Row(
         modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -32,7 +33,7 @@ fun ScreenHeader(
                 onClick = onBack,
                 modifier = Modifier
                     .heightIn(min = 48.dp)
-                    .semantics { contentDescription = "在庫一覧へ戻る" },
+                    .semantics { contentDescription = backContentDescription },
             ) { Text("戻る") }
         }
         Text(
