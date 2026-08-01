@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.runtime.CompositionLocalProvider
@@ -61,7 +62,7 @@ class FridgeManagerAppTest {
         launchApp()
 
         composeRule.onNodeWithContentDescription("設定タブ").performClick().assertIsSelected()
-        composeRule.onNodeWithText("利用データの削除").assertIsDisplayed()
+        composeRule.onNodeWithText("利用データの削除").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -134,13 +135,12 @@ class FridgeManagerAppTest {
             FridgeManagerApp(container = DefaultAppContainer(repository))
         }
 
-        composeRule.onNodeWithContentDescription("食材を登録").performClick()
-        composeRule.onNodeWithText("手動で登録").performClick()
+        composeRule.onNodeWithContentDescription("食材を追加").performClick()
         composeRule.onNodeWithContentDescription("食材名、必須").performTextInput("豆腐")
         composeRule.onNodeWithContentDescription("在庫数、必須").performTextInput("10")
-        composeRule.onNodeWithContentDescription("単位、必須、現在値は個").performClick()
+        composeRule.onNodeWithContentDescription("単位、必須、現在値は個").performScrollTo().performClick()
         composeRule.onNodeWithContentDescription("単位 丁").performClick()
-        composeRule.onNodeWithText("新規登録").performClick()
+        composeRule.onNodeWithText("新規登録").performScrollTo().performClick()
 
         composeRule.waitUntil(3_000) {
             runCatching {
@@ -150,7 +150,7 @@ class FridgeManagerAppTest {
         }
         composeRule.onNodeWithContentDescription("豆腐、数量 10 丁、在庫あり、編集").performClick()
         composeRule.onNodeWithContentDescription("置換後の在庫数、必須").performTextReplacement("7.5")
-        composeRule.onNodeWithText("編集内容を確定").performClick()
+        composeRule.onNodeWithText("編集内容を確定").performScrollTo().performClick()
         composeRule.waitUntil(3_000) {
             runCatching {
                 composeRule.onNodeWithContentDescription("豆腐、数量 7.5 丁、在庫あり、編集")
@@ -159,7 +159,7 @@ class FridgeManagerAppTest {
         }
 
         composeRule.onNodeWithContentDescription("豆腐、数量 7.5 丁、在庫あり、編集").performClick()
-        composeRule.onNodeWithText("この食材を削除").performClick()
+        composeRule.onNodeWithText("この食材を削除").performScrollTo().performClick()
         composeRule.onNodeWithText("削除を確定").performClick()
         composeRule.onNodeWithText("食材がありません").assertIsDisplayed()
     }

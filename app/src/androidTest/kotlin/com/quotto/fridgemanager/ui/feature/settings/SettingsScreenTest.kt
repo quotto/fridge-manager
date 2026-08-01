@@ -39,9 +39,9 @@ class SettingsScreenTest {
             )
         }
 
-        composeRule.onNodeWithText("プライバシーとデータの取扱い").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("プライバシーとデータの取扱い").assertIsDisplayed()
         composeRule.onNodeWithText(
-            "食材データは端末内だけに保存し、クラウド同期やバックアップは行いません。",
+            "食材データは端末内だけに保存し、クラウド同期やバックアップは行いません。画像で既存在庫を更新する場合は、対象の食材名・現在数量・単位を解析目的でAWSとAmazon Bedrockへ一時送信し、永続保存しません。",
         ).performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText(
             "解析画像はAWSとAmazon Bedrockへ送信しますが、クラウドへ永続保存しません。端末の一時画像は遅くとも1時間以内に削除します。",
@@ -81,7 +81,7 @@ class SettingsScreenTest {
             )
         }
 
-        composeRule.onNodeWithText("すべての利用データを削除").performClick()
+        composeRule.onNodeWithText("すべての利用データを削除").performScrollTo().performClick()
         composeRule.runOnIdle { check(requested) }
     }
 
@@ -179,13 +179,15 @@ class SettingsScreenTest {
             )
         }
 
+        val retryNode = composeRule
+            .onNodeWithContentDescription("未完了の削除だけを再試行")
+            .performScrollTo()
         val deleteTop = composeRule
             .onNodeWithContentDescription("すべての利用データを削除、復元できません")
             .fetchSemanticsNode()
             .boundsInRoot
             .top
-        val retryTop = composeRule
-            .onNodeWithContentDescription("未完了の削除だけを再試行")
+        val retryTop = retryNode
             .fetchSemanticsNode()
             .boundsInRoot
             .top
@@ -199,18 +201,20 @@ class SettingsScreenTest {
             SettingsScreen(DataDeletionCoordinator(gateway))
         }
 
-        composeRule.onNodeWithText("すべての利用データを削除").performClick()
+        composeRule.onNodeWithText("すべての利用データを削除").performScrollTo().performClick()
         composeRule.onNodeWithText("完全に削除").performClick()
         composeRule.waitUntil(3_000) {
             runCatching {
-                composeRule.onNodeWithText("匿名ユーザー: 未完了").assertIsDisplayed()
+                composeRule.onNodeWithText("匿名ユーザー: 未完了").performScrollTo().assertIsDisplayed()
             }.isSuccess
         }
-        composeRule.onNodeWithText("端末データ: 削除済み").assertIsDisplayed()
-        composeRule.onNodeWithText("一時画像: 削除済み").assertIsDisplayed()
+        composeRule.onNodeWithText("端末データ: 削除済み").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("一時画像: 削除済み").performScrollTo().assertIsDisplayed()
 
-        composeRule.onNodeWithText("未完了の削除を再試行").performClick()
-        composeRule.onNodeWithText("すべての利用データを削除しました").assertIsDisplayed()
+        composeRule.onNodeWithText("未完了の削除を再試行").performScrollTo().performClick()
+        composeRule.onNodeWithText(
+            "端末データとFirebase匿名ユーザーの削除を受け付けました。提供者のバックアップやセキュリティ記録は各保持期限まで残る場合があります。",
+        ).performScrollTo().assertIsDisplayed()
         composeRule.runOnIdle {
             check(gateway.localCalls == 1)
             check(gateway.temporaryCalls == 1)
