@@ -37,10 +37,28 @@ describe('AnalysisApiStack', () => {
   });
 
   it('cacheなしREQUEST authorizerで双方のtoken検証前に解析Lambdaへ到達させない', () => {
+    const restApi = Object.values(template.findResources('AWS::ApiGateway::RestApi'))[0]!;
+    const body = restApi.Properties.Body as {
+      components: { securitySchemes: Record<string, unknown> };
+      paths: Record<string, { post: Record<string, unknown> }>;
+    };
+    expect(body.components.securitySchemes).toMatchObject({
+      FirebaseAuthorizer: {
+        type: 'apiKey',
+        name: 'Authorization',
+        in: 'header',
+        'x-amazon-apigateway-authtype': 'custom',
+        'x-amazon-apigateway-authorizer': {
+          type: 'request',
+          authorizerResultTtlInSeconds: 0,
+          identitySource: 'method.request.header.Authorization,method.request.header.X-Firebase-AppCheck',
+          authorizerUri: expect.anything(),
+        },
+      },
+    });
+    expect(body.paths['/v1/analysis']!.post.security).toEqual([{ FirebaseAuthorizer: [] }]);
     const rendered = JSON.stringify(template.toJSON());
-    expect(rendered).toContain('method.request.header.Authorization,method.request.header.X-Firebase-AppCheck');
-    expect(rendered).toContain('authorizerResultTtlInSeconds');
-    expect(rendered).toContain('FirebaseAuthorizer');
+    expect(JSON.stringify(body.components.securitySchemes)).toContain(':apigateway:');
     expect(rendered).toContain('authorizers/*');
     template.hasResourceProperties('AWS::Lambda::Function', { Environment: { Variables: Match.objectLike({
       FIREBASE_PROJECT_ID: { Ref: 'FirebaseProjectId' },
@@ -79,12 +97,23 @@ describe('AnalysisApiStack', () => {
     }) } });
   });
 
-  it('Lambdaを58秒、Regional REST統合を60秒にする', () => {
+  it('devはLambdaを58秒、Regional REST統合を既定quotaの29秒にする', () => {
     template.hasResourceProperties('AWS::Lambda::Function', { Timeout: 58 });
     const analysisFunction = Object.values(template.findResources('AWS::Lambda::Function'))
       .find((resource) => resource.Properties.FunctionName === 'fridge-manager-dev-analysis')!;
     expect(analysisFunction.Properties).not.toHaveProperty('ReservedConcurrentExecutions');
-    expect(JSON.stringify(template.toJSON())).toContain('60000');
+    const restApi = Object.values(template.findResources('AWS::ApiGateway::RestApi'))[0]!;
+    const body = restApi.Properties.Body as { paths: Record<string, { post: Record<string, unknown> }> };
+    expect(body.paths['/v1/analysis']!.post['x-amazon-apigateway-integration']).toMatchObject({ timeoutInMillis: 29_000 });
+  });
+
+  it('prodはRegional REST統合の60秒要件を維持する', () => {
+    const prodTemplate = Template.fromStack(new AnalysisApiStack(new App(), 'ProdAnalysisApi', {
+      config: getEnvironmentConfig('prod'),
+    }));
+    const restApi = Object.values(prodTemplate.findResources('AWS::ApiGateway::RestApi'))[0]!;
+    const body = restApi.Properties.Body as { paths: Record<string, { post: Record<string, unknown> }> };
+    expect(body.paths['/v1/analysis']!.post['x-amazon-apigateway-integration']).toMatchObject({ timeoutInMillis: 60_000 });
   });
 
   it('prodの解析Lambdaだけ予約同時実行5で費用を保護する', () => {

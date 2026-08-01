@@ -273,6 +273,7 @@ export class AnalysisApiStack extends Stack {
     if (!post) throw new Error('OpenAPIにPOST /v1/analysisがありません');
     components.securitySchemes = { FirebaseAuthorizer: {
       type: 'apiKey', name: 'Authorization', in: 'header',
+      'x-amazon-apigateway-authtype': 'custom',
       'x-amazon-apigateway-authorizer': {
         type: 'request', authorizerResultTtlInSeconds: 0,
         identitySource: 'method.request.header.Authorization,method.request.header.X-Firebase-AppCheck',
@@ -281,7 +282,7 @@ export class AnalysisApiStack extends Stack {
     } };
     post.security = [{ FirebaseAuthorizer: [] }];
     post['x-amazon-apigateway-integration'] = {
-      type: 'aws_proxy', httpMethod: 'POST', timeoutInMillis: 60000,
+      type: 'aws_proxy', httpMethod: 'POST', timeoutInMillis: props.config.apiIntegrationTimeoutMillis,
       uri: `arn:${this.partition}:apigateway:${this.region}:lambda:path/2015-03-31/functions/${fn.functionArn}/invocations`,
     };
     const api = new apigateway.SpecRestApi(this, 'AnalysisApi', {
