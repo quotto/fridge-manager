@@ -62,8 +62,8 @@ fun SettingsContent(
     onConfirmDeletion: () -> Unit,
     onDismissDeletion: () -> Unit,
     onRetryDeletion: () -> Unit,
-    onOpenPrivacyPolicy: () -> Unit,
-    onOpenDataDeletionGuide: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit = {},
+    onOpenDataDeletionGuide: () -> Unit = {},
     linkOpenFailed: Boolean = false,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
