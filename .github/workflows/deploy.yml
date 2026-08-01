@@ -60,6 +60,11 @@ jobs:
         run: npx cdk diff FridgeManagerStgFoundation FridgeManagerStgFoundationAnalysisApi --app .promotion/cdk.out --exclusively
       - name: Deploy staging with CloudFormation rollback
         run: bash .github/scripts/deploy-cloud.sh stg .promotion/cdk.out
+      - name: Configure staging operations credentials
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4
+        with:
+          role-to-assume: ${{ vars.AWS_OPERATIONS_ROLE_ARN }}
+          aws-region: ap-northeast-1
       - name: Smoke test staging
         run: bash .github/scripts/smoke-cloud.sh stg
       - name: Preserve digested promotion assembly
