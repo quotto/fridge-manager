@@ -119,15 +119,18 @@ fun AppNavigation(
             composable(AppDestination.ImageAnalysis.route) {
                 ImageAnalysisScreen(
                     candidateReviewPresenter = candidateReviewPresenter,
+                    onManualFallback = {
+                        controller.navigate(AppDestination.Registration.route) {
+                            popUpTo(AppDestination.ImageAnalysis.route) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
                     onCandidatesValidated = {
                         onReloadInventory()
                         controller.navigate(AppDestination.Inventory.route) {
                             popUpTo(AppDestination.Inventory.route) { inclusive = false }
                             launchSingleTop = true
                         }
-                    },
-                    onManualRegistration = {
-                        controller.navigate(AppDestination.Registration.route)
                     },
                     onSendImage = { image, requestId, onUpload ->
                         val client = analysisApiClient ?: throw AnalysisRequestException.unavailable()
@@ -151,6 +154,7 @@ fun AppNavigation(
                 loaded?.let { ingredient ->
                     ImageAnalysisScreen(
                         candidateReviewPresenter = candidateReviewPresenter,
+                        onManualFallback = { controller.popBackStack() },
                         onCandidatesValidated = {},
                         updateIngredient = ingredient,
                         aiUpdateCandidatePresenter = aiUpdateCandidatePresenter,
@@ -161,7 +165,6 @@ fun AppNavigation(
                                 launchSingleTop = true
                             }
                         },
-                        onManualRegistration = { controller.navigate(AppDestination.Registration.route) },
                         onSendImage = { image, requestId, onUpload ->
                             val client = analysisApiClient ?: throw AnalysisRequestException.unavailable()
                             val currentItem = AnalysisCurrentItem(

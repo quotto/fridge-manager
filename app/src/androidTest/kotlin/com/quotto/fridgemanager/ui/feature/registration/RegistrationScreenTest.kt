@@ -2,6 +2,8 @@ package com.quotto.fridgemanager.ui.feature.registration
 
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -46,9 +48,41 @@ class RegistrationScreenTest {
 
         composeRule.onNodeWithContentDescription("食材名、必須").assertTextContains("豆腐")
         composeRule.onNodeWithContentDescription("在庫数、必須").assertTextContains("1")
+        composeRule.onNodeWithContentDescription("単位、必須、現在値は丁").performClick()
+        composeRule.onNodeWithText("単位を選択").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("単位 丁").assertIsSelected()
         composeRule.onNodeWithText("新規登録").assertIsNotEnabled()
-        composeRule.onNodeWithText("豆腐の在庫を更新").performClick()
+        composeRule.onNodeWithText("登録済みの食材です。ここから更新してください。").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("豆腐、現在の在庫は1丁、登録済み、タップして更新")
+            .performClick()
         assertEquals("stored", selectedId)
+    }
+
+    @Test
+    fun unit_canBeSelectedFromPresetTileDialog() {
+        var selected = "個"
+        composeRule.setContent {
+            FridgeManagerTheme {
+                RegistrationContent(
+                    state = RegistrationFormState(
+                        name = "りんご",
+                        quantity = "1",
+                        selectedUnitSymbol = selected,
+                    ),
+                    onNameChange = {},
+                    onQuantityChange = {},
+                    onUnitChange = { selected = it },
+                    onSubmit = {},
+                    onSelectExisting = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("単位、必須、現在値は個").performClick()
+        composeRule.onNodeWithContentDescription("単位 kg").performClick()
+
+        composeRule.runOnIdle { assertEquals("kg", selected) }
+        composeRule.onNodeWithText("単位を選択").assertDoesNotExist()
     }
 
     @Test
