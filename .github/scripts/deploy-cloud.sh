@@ -18,6 +18,16 @@ case "$environment" in
 esac
 api_stack="${foundation}AnalysisApi"
 
+# CloudFormationはROLLBACK_COMPLETEのstackを更新できない。quota待ちで失敗した
+# stg API stackだけを再作成可能にし、foundationとprodは削除対象にしない。
+if [[ "$environment" == stg ]]; then
+  stack_status="$(aws cloudformation describe-stacks --stack-name "$api_stack" --query 'Stacks[0].StackStatus' --output text 2>/dev/null || true)"
+  if [[ "$stack_status" == ROLLBACK_COMPLETE ]]; then
+    aws cloudformation delete-stack --stack-name "$api_stack"
+    aws cloudformation wait stack-delete-complete --stack-name "$api_stack"
+  fi
+fi
+
 npx cdk deploy "$foundation" "$api_stack" --app "$assembly" \
   --exclusively \
   --rollback \

@@ -15,6 +15,7 @@ export interface EnvironmentConfig {
   readonly removalPolicy: RemovalPolicy;
   readonly retainData: boolean;
   readonly terminationProtection: boolean;
+  readonly apiIntegrationTimeoutMillis: 29_000 | 60_000;
 }
 
 const environmentConfigs: Readonly<Record<DeploymentEnvironment, EnvironmentConfig>> = {
@@ -28,6 +29,7 @@ const environmentConfigs: Readonly<Record<DeploymentEnvironment, EnvironmentConf
     removalPolicy: RemovalPolicy.DESTROY,
     retainData: false,
     terminationProtection: false,
+    apiIntegrationTimeoutMillis: 29_000,
   },
   stg: {
     environment: 'stg',
@@ -39,6 +41,7 @@ const environmentConfigs: Readonly<Record<DeploymentEnvironment, EnvironmentConf
     removalPolicy: RemovalPolicy.DESTROY,
     retainData: false,
     terminationProtection: false,
+    apiIntegrationTimeoutMillis: 29_000,
   },
   prod: {
     environment: 'prod',
@@ -50,6 +53,7 @@ const environmentConfigs: Readonly<Record<DeploymentEnvironment, EnvironmentConf
     removalPolicy: RemovalPolicy.RETAIN,
     retainData: true,
     terminationProtection: true,
+    apiIntegrationTimeoutMillis: 60_000,
   },
 };
 

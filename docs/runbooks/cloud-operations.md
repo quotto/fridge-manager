@@ -41,6 +41,8 @@ GitHub artifact保持は90日であるため、prod稼働中の現行・既知�
 
 実accountのEnvironment/OIDC設定がない状態ではdeployを実行しない。認証付き正常系smokeと実停止演習もFirebase limited-use token・実account設定が整うまで留保し、CDK synth、workflow test、未認証negative smokeだけを自動化する。代替としてCloudFormation outputs、API Gateway integration、Lambda/control状態をsynth testとnegative smokeで検証する。
 
+API Gatewayの60秒quota反映までは、dev/stgのintegration timeoutをデフォルト上限29秒へ暫定設定し、prodは60秒を維持する。29秒超ではクライアントが失敗してもLambdaが最大58秒まで継続し、費用が発生し得る。quota反映後はdev/stgを60秒へ戻してsynth diffとstaging smokeを再実行する。stg API stackが`ROLLBACK_COMPLETE`の場合、deploy scriptはその失敗stackだけを削除して再作成し、foundationとprodは削除しない。
+
 ## ロールバック
 
 deploy失敗時はCloudFormation Eventsを確認し、`UPDATE_ROLLBACK_COMPLETE`まで待つ。`UPDATE_ROLLBACK_FAILED`の場合は変更を重ねず、権限・quota・手動変更を特定してCloudFormationのcontinue-update-rollbackを実施する。
