@@ -57,7 +57,8 @@ jobs:
           api-level: ${{ matrix.api-level == 37 && '37.0' || matrix.api-level }}
           # API 37 is a preview SDK and is not published on the stable SDK channel yet.
           channel: ${{ matrix.api-level == 37 && 'canary' || 'stable' }}
-          target: google_apis
+          # The Android 17 preview runtime is published as a bootable 16 KB page-size image.
+          target: ${{ matrix.api-level == 37 && 'google_apis_ps16k' || 'google_apis' }}
           arch: x86_64
           disable-animations: true
           disable-linux-hw-accel: false
