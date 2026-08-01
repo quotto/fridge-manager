@@ -16,6 +16,9 @@ import com.quotto.fridgemanager.BuildConfig
 import com.quotto.fridgemanager.data.remote.AuthorizedAnalysisApiClient
 import com.quotto.fridgemanager.data.remote.UrlConnectionAnalysisHttpTransport
 import com.quotto.fridgemanager.domain.analysis.AnalysisClient
+import com.quotto.fridgemanager.data.deletion.AndroidDataDeletionGateway
+import com.quotto.fridgemanager.presentation.settings.DataDeletionCoordinator
+import com.quotto.fridgemanager.presentation.settings.DataDeletionGateway
 
 /** アプリ全体の依存を生成するComposition Root。 */
 interface AppContainer {
@@ -27,14 +30,16 @@ interface AppContainer {
     val aiUpdateCandidatePresenter: AiUpdateCandidatePresenter
     val authCoordinator: AuthCoordinator
     val analysisApiClient: AnalysisClient?
+    val dataDeletionCoordinator: DataDeletionCoordinator
 }
 
 class DefaultAppContainer(
     inventoryRepository: InventoryRepository? = null,
     context: Context? = null,
 ) : AppContainer {
+    private val database = context?.let(InventoryDatabase::create)
     override val inventoryRepository: InventoryRepository = inventoryRepository
-        ?: context?.let { RoomInventoryRepository(InventoryDatabase.create(it)) }
+        ?: database?.let(::RoomInventoryRepository)
         ?: EmptyInventoryRepository()
     override val inventoryPresenter: InventoryPresenter = InventoryPresenter(this.inventoryRepository)
     override val registrationPresenter: RegistrationPresenter = RegistrationPresenter(this.inventoryRepository)
@@ -46,4 +51,15 @@ class DefaultAppContainer(
     override val analysisApiClient: AnalysisClient? = BuildConfig.ANALYSIS_API_BASE_URL
         .takeIf(String::isNotBlank)
         ?.let { AuthorizedAnalysisApiClient(authCoordinator, UrlConnectionAnalysisHttpTransport(it)) }
+    override val dataDeletionCoordinator = DataDeletionCoordinator(
+        if (context != null && database != null) {
+            AndroidDataDeletionGateway(context, database, authCoordinator)
+        } else {
+            object : DataDeletionGateway {
+                override suspend fun deleteLocalInventory() = error("Local storage is unavailable")
+                override suspend fun deleteTemporaryImages() = error("Temporary storage is unavailable")
+                override suspend fun deleteAnonymousUser() = error("Firebase is unavailable")
+            }
+        },
+    )
 }

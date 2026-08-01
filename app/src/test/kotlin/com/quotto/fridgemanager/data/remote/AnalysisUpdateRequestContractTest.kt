@@ -68,6 +68,7 @@ private class BodyRecordingTransport : AnalysisHttpTransport {
 }
 
 private class FakeAuth : FirebaseAuthGateway {
+    override suspend fun deleteCurrentAnonymousUser() = Unit
     private val user = AnonymousUser("anonymous-user")
     override fun currentAnonymousUser() = user
     override suspend fun signInAnonymously() = user

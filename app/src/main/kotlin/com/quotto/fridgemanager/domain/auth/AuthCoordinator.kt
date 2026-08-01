@@ -14,6 +14,7 @@ interface FirebaseAuthGateway {
     fun currentAnonymousUser(): AnonymousUser?
     suspend fun signInAnonymously(): AnonymousUser
     suspend fun getIdToken(user: AnonymousUser, forceRefresh: Boolean): String
+    suspend fun deleteCurrentAnonymousUser()
 }
 
 interface AppCheckGateway {
@@ -33,6 +34,7 @@ sealed interface AuthState {
     data class AiUnavailable(
         val manualInventoryAvailable: Boolean = true,
     ) : AuthState
+    data object Deleted : AuthState
 }
 
 class AuthCoordinator(
@@ -41,11 +43,16 @@ class AuthCoordinator(
     private val logger: (String) -> Unit = {},
 ) {
     private val operation = Mutex()
+    private var anonymousUserDeleted = false
     private val mutableState = MutableStateFlow<AuthState>(AuthState.Initializing)
     val state: StateFlow<AuthState> = mutableState.asStateFlow()
 
     /** 起動時に匿名ユーザーだけを確立する。token は保持しない。 */
     suspend fun initialize(): Boolean = operation.withLock {
+        if (anonymousUserDeleted) {
+            mutableState.value = AuthState.Deleted
+            return@withLock false
+        }
         try {
             ensureAnonymousUser()
             mutableState.value = AuthState.Ready
@@ -60,6 +67,10 @@ class AuthCoordinator(
 
     /** API 呼出し直前に2種類の短命tokenを取得し、呼出し側へ一度だけ引き渡す。 */
     internal suspend fun prepareAiRequest(): AiRequestAuthorization? = operation.withLock {
+        if (anonymousUserDeleted) {
+            mutableState.value = AuthState.Deleted
+            return@withLock null
+        }
         try {
             val user = ensureAnonymousUser()
             val idToken = firebaseAuth.getIdToken(user, forceRefresh = true)
@@ -77,10 +88,21 @@ class AuthCoordinator(
 
     internal suspend fun retry(): AiRequestAuthorization? = prepareAiRequest()
 
+    /** 現在の匿名ユーザーだけを削除する。未認証は削除済みとして扱い、新規ユーザーを作らない。 */
+    suspend fun deleteAnonymousUser() = operation.withLock {
+        firebaseAuth.deleteCurrentAnonymousUser()
+        anonymousUserDeleted = true
+        mutableState.value = AuthState.Deleted
+    }
+
     /** limited-use tokenを保持・再利用させず、取得直後の単一送信境界だけへ渡す。 */
     suspend fun <T> withFreshAuthorization(
         block: suspend (AiRequestAuthorization) -> T,
     ): T? = operation.withLock {
+        if (anonymousUserDeleted) {
+            mutableState.value = AuthState.Deleted
+            return@withLock null
+        }
         val authorization = try {
             val user = ensureAnonymousUser()
             val idToken = firebaseAuth.getIdToken(user, forceRefresh = true)
