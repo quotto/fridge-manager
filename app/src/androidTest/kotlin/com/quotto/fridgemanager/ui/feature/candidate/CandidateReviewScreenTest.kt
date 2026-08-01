@@ -41,6 +41,7 @@ class CandidateReviewScreenTest {
                     result = success(
                         candidates = listOf(
                             AnalysisCandidate("豆腐", "2", "丁", "VISIBLE_COUNT", false),
+                            AnalysisCandidate("牛乳", "1", "本", "PACKAGE_LABEL", false),
                             AnalysisCandidate(null, null, null, "VISUAL_ESTIMATE", true),
                         ),
                         warnings = listOf("LOW_CONFIDENCE"),
@@ -52,6 +53,7 @@ class CandidateReviewScreenTest {
         }
 
         composeRule.onNodeWithText("根拠: 画像内の個数").assertIsDisplayed()
+        composeRule.onNodeWithText("根拠: パッケージ表示").assertIsDisplayed()
         composeRule.onNodeWithText("根拠: 画像からの推定").assertIsDisplayed()
         composeRule.onNodeWithText("要確認").assertIsDisplayed()
         composeRule.onNodeWithText("警告: 推定の確度が低い候補があります").assertIsDisplayed()
