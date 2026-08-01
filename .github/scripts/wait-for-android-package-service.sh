@@ -2,7 +2,7 @@
 set -euo pipefail
 
 for ((attempt = 1; attempt <= 90; attempt++)); do
-  if adb shell service check package 2>/dev/null | grep -q "found"; then
+  if adb shell service check package 2>/dev/null | grep -q "Service package: found"; then
     exit 0
   fi
   if ((attempt == 90)); then

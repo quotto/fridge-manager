@@ -38,6 +38,8 @@ class AndroidCompatibilityWorkflowTest {
         assertTrue(readinessScript.contains("attempt <= 90"))
         assertTrue(readinessScript.contains("attempt == 90"))
         assertTrue(readinessScript.contains("adb shell service check package"))
+        assertTrue(readinessScript.contains("Service package: found"))
+        assertTrue(!readinessScript.contains("grep -q \"found\""))
         assertTrue(readinessScript.contains("sleep 2"))
         assertTrue(readinessScript.contains("exit 1"))
     }
