@@ -4,12 +4,16 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
@@ -32,6 +36,10 @@ import org.junit.Test
 class CandidateReviewScreenTest {
     @get:Rule val composeRule = createComposeRule()
 
+    private fun scrollToText(text: String) {
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(text))
+    }
+
     @Test
     fun `候補の根拠と要確認と警告と未入力と既存在庫を表示する`() {
         val repository = RecordingRepository(listOf(storedIngredient()))
@@ -52,14 +60,22 @@ class CandidateReviewScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("根拠: 画像内の個数").assertIsDisplayed()
-        composeRule.onNodeWithText("根拠: パッケージ表示").assertIsDisplayed()
-        composeRule.onNodeWithText("根拠: 画像からの推定").assertIsDisplayed()
-        composeRule.onNodeWithText("要確認").assertIsDisplayed()
-        composeRule.onNodeWithText("警告: 推定の確度が低い候補があります").assertIsDisplayed()
-        composeRule.onNodeWithText("現在の在庫: 1 丁").assertIsDisplayed()
-        composeRule.onAllNodesWithText("食材名")[1].assertTextContains("食材名を入力してください")
-        composeRule.onAllNodesWithText("推定数量")[1].assertTextContains("在庫数は小数2桁までの数値で入力してください")
+        scrollToText("根拠: 画像内の個数")
+        composeRule.onNodeWithText("根拠: 画像内の個数").performScrollTo().assertIsDisplayed()
+        scrollToText("根拠: パッケージ表示")
+        composeRule.onNodeWithText("根拠: パッケージ表示").performScrollTo().assertIsDisplayed()
+        scrollToText("根拠: 画像からの推定")
+        composeRule.onNodeWithText("根拠: 画像からの推定").performScrollTo().assertIsDisplayed()
+        scrollToText("要確認")
+        composeRule.onNodeWithText("要確認").performScrollTo().assertIsDisplayed()
+        scrollToText("警告: 推定の確度が低い候補があります")
+        composeRule.onNodeWithText("警告: 推定の確度が低い候補があります").performScrollTo().assertIsDisplayed()
+        scrollToText("現在の在庫: 1 丁")
+        composeRule.onNodeWithText("現在の在庫: 1 丁").performScrollTo().assertIsDisplayed()
+        scrollToText("食材名を入力してください")
+        composeRule.onNodeWithText("食材名を入力してください").assertIsDisplayed()
+        scrollToText("在庫数は小数2桁までの数値で入力してください")
+        composeRule.onNodeWithText("在庫数は小数2桁までの数値で入力してください").assertIsDisplayed()
     }
 
     @Test
@@ -148,10 +164,11 @@ class CandidateReviewScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("在庫に一括反映する").assertIsNotEnabled()
-        composeRule.onNodeWithText("増加").performClick()
-        composeRule.onNodeWithText("反映後の在庫: 3 丁").assertIsDisplayed()
-        composeRule.onNodeWithText("在庫に一括反映する").assertIsEnabled()
+        scrollToText("在庫に一括反映する")
+        composeRule.onNodeWithText("在庫に一括反映する").performScrollTo().assertIsNotEnabled()
+        composeRule.onNodeWithText("増加").performScrollTo().performClick()
+        composeRule.onNodeWithText("反映後の在庫: 3 丁").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("在庫に一括反映する").performScrollTo().assertIsEnabled()
     }
 }
 
