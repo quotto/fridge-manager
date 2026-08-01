@@ -13,6 +13,7 @@
 | Google Playデータ型 | 収集 | 共有 | 必須/任意 | ephemeral | 目的 | 処理先・保持 |
 | --- | --- | --- | --- | --- | --- | --- |
 | Photos and videos / Photos | はい | 共有しない | 画像解析を選ぶ場合のみ任意 | はい | App functionality | AWS・Amazon Bedrock。クラウド永続保存なし |
+| App activity / Other user-generated content | はい | 共有しない | 既存在庫を画像で更新する場合のみ任意 | はい | App functionality | 対象の食材名・現在数量・単位をAWS・Amazon Bedrockで一時処理。クラウド永続保存なし |
 | Personal info / User IDs | はい | 共有しない | アプリ起動・利用時に必須 | いいえ | App functionality、Fraud prevention, security | Firebase匿名ID。AI解析時はAWS上の不可逆hashも処理。認証情報のbackup削除は最大180日、hashはクォータ・冪等性TTLまで |
 | Device or other IDs | はい | 共有しない | アプリ利用時に必須 | いいえ | Fraud prevention, security、App functionality | Firebase Installation ID、Crashlytics Installation UUID、App Check。最大90日 |
 | App activity / Other actions | はい | 共有しない | AI解析時は必須 | いいえ | Analytics、App functionality、Fraud prevention, security | request ID、モデルID、入出力token数、合計試行回数、処理結果区分、provider呼出し有無。AWSで90日 |
@@ -23,7 +24,7 @@ IPアドレス、User-Agent、attestation情報はFirebase、Google Play Integri
 
 ## 収集しないデータ
 
-- 食材一覧は端末外へ保存しない。
+- 食材一覧は端末外へ保存しない。既存在庫を画像で更新する場合だけ、対象の食材名・現在数量・単位を解析目的で一時送信する。
 - 広告ID、連絡先、正確な位置情報、決済情報、健康情報は利用しない。
 - Analytics SDKは使用しない。上表のAnalytics目的は障害・性能分析に限定する。
 - 画像、在庫、token、匿名ユーザーIDそのものをAWSアプリケーションログへ記録しない。

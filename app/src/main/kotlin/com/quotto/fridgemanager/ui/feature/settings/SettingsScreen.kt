@@ -13,7 +13,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
@@ -38,14 +42,16 @@ fun SettingsScreen(coordinator: DataDeletionCoordinator) {
     val state by coordinator.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val uriHandler = LocalUriHandler.current
+    var linkOpenFailed by rememberSaveable { mutableStateOf(false) }
     SettingsContent(
         deletionState = state,
         onRequestDeletion = coordinator::requestConfirmation,
         onConfirmDeletion = { scope.launch { coordinator.confirmDeletion() } },
         onDismissDeletion = coordinator::dismissConfirmation,
         onRetryDeletion = { scope.launch { coordinator.retry() } },
-        onOpenPrivacyPolicy = { uriHandler.openUri(PrivacyLinks.policy) },
-        onOpenDataDeletionGuide = { uriHandler.openUri(PrivacyLinks.dataDeletion) },
+        onOpenPrivacyPolicy = { linkOpenFailed = !openPrivacyLink(uriHandler, PrivacyLinks.policy) },
+        onOpenDataDeletionGuide = { linkOpenFailed = !openPrivacyLink(uriHandler, PrivacyLinks.dataDeletion) },
+        linkOpenFailed = linkOpenFailed,
     )
 }
 
@@ -58,6 +64,7 @@ fun SettingsContent(
     onRetryDeletion: () -> Unit,
     onOpenPrivacyPolicy: () -> Unit,
     onOpenDataDeletionGuide: () -> Unit,
+    linkOpenFailed: Boolean = false,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(title = "設定")
@@ -69,7 +76,7 @@ fun SettingsContent(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("プライバシーとデータの取扱い")
-            Text("食材データは端末内だけに保存し、クラウド同期やバックアップは行いません。")
+            Text("食材データは端末内だけに保存し、クラウド同期やバックアップは行いません。画像で既存在庫を更新する場合は、対象の食材名・現在数量・単位を解析目的でAWSとAmazon Bedrockへ一時送信し、永続保存しません。")
             Text("解析画像はAWSとAmazon Bedrockへ送信しますが、クラウドへ永続保存しません。端末の一時画像は遅くとも1時間以内に削除します。")
             Text("解析結果は端末へ返し、クラウド側では継続保存しません。")
             Text("Firebase匿名認証とApp Checkを不正利用防止に使用します。")
@@ -82,6 +89,11 @@ fun SettingsContent(
             }
             OutlinedButton(onClick = onOpenDataDeletionGuide, modifier = Modifier.fillMaxWidth()) {
                 Text("アプリ外の削除案内を開く")
+            }
+            if (linkOpenFailed) {
+                Text("ブラウザを開けませんでした。次のURLをコピーして確認してください。")
+                Text(PrivacyLinks.policy)
+                Text(PrivacyLinks.dataDeletion)
             }
             Text("アプリのデータ消去またはアンインストール後、端末内データは復元できません。")
             Text("利用データの削除")
@@ -141,3 +153,6 @@ fun SettingsContent(
         )
     }
 }
+
+internal fun openPrivacyLink(uriHandler: UriHandler, url: String): Boolean =
+    runCatching { uriHandler.openUri(url) }.isSuccess
