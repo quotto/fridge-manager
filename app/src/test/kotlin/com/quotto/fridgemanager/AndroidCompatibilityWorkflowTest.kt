@@ -28,11 +28,14 @@ class AndroidCompatibilityWorkflowTest {
     }
 
     @Test
-    fun `APIごとの失敗証跡を成功失敗にかかわらず保存する`() {
+    fun `APIごとの機微情報を除いた証跡を成功失敗にかかわらず必須保存する`() {
         assertTrue(workflow.contains("if: always()"))
         assertTrue(workflow.contains("actions/upload-artifact@"))
         assertTrue(workflow.contains("android-compatibility-\${{ matrix.api-level }}"))
-        assertTrue(workflow.contains("app/build/reports/androidTests/connected/"))
-        assertTrue(workflow.contains("app/build/outputs/androidTest-results/connected/"))
+        assertTrue(workflow.contains("sanitize-android-test-results.mjs"))
+        assertTrue(workflow.contains(".compatibility-evidence/summary.json"))
+        assertTrue(workflow.contains("if-no-files-found: error"))
+        assertTrue(!workflow.contains("path: app/build/outputs/androidTest-results/connected/"))
+        assertTrue(!workflow.contains("path: app/build/reports/androidTests/connected/"))
     }
 }

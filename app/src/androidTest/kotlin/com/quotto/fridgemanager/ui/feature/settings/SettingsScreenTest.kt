@@ -115,7 +115,7 @@ class SettingsScreenTest {
     }
 
     @Test
-    fun 削除操作の読み上げ順は全削除から未完了再試行になる() {
+    fun 削除操作の画面上の表示順は全削除から未完了再試行になる() {
         composeRule.setContent {
             SettingsContent(
                 deletionState = DataDeletionState.Failed(
