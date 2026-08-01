@@ -6,7 +6,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.quotto.fridgemanager.image.ImageInputAsset
 import com.quotto.fridgemanager.image.ImagePreprocessor
-import com.quotto.fridgemanager.image.ImageTemporaryFileCleaner
 import com.quotto.fridgemanager.image.PreprocessedImage
 import com.quotto.fridgemanager.presentation.image.ImageAnalysisSession
 import java.util.UUID
@@ -15,7 +14,6 @@ class ImageAnalysisViewModel(
     context: Context,
     sendImage: suspend (PreprocessedImage, String, () -> Unit) -> com.quotto.fridgemanager.domain.analysis.AnalysisApiResult.Success,
 ) : ViewModel() {
-    init { ImageTemporaryFileCleaner(context.applicationContext.cacheDir).cleanup() }
     private var requestId: String? = null
     private val session = ImageAnalysisSession(
         scope = viewModelScope,
