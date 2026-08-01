@@ -42,6 +42,12 @@ describe('cloud deployment workflow', () => {
     expect(workflow).toContain('bash .github/scripts/deploy-cloud.sh prod');
   });
 
+  it('staging smokeはdeploy roleではなく最小権限operations roleで実行する', () => {
+    expect(workflow).toContain('Configure staging operations credentials');
+    expect(workflow).toContain('role-to-assume: ${{ vars.AWS_OPERATIONS_ROLE_ARN }}');
+    expect(workflow.indexOf('Configure staging operations credentials')).toBeLessThan(workflow.indexOf('Smoke test staging'));
+  });
+
   it('deploy scriptは自動rollbackを無効化できない', () => {
     const script = read('.github/scripts/deploy-cloud.sh');
     expect(script).toContain('--rollback');
