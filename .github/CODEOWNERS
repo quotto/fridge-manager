@@ -1,0 +1,5 @@
+# セキュリティ例外の変更・期限延長はownerレビューを必須化する。
+/.github/scripts/check-npm-audit.mjs @quotto
+/.github/workflows/security.yml @quotto
+/.github/workflows/deploy.yml @quotto
+
