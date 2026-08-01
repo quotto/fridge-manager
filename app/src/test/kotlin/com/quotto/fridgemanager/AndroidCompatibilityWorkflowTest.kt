@@ -27,12 +27,19 @@ class AndroidCompatibilityWorkflowTest {
     @Test
     fun `instrumentation開始前にpackage serviceの準備完了を有界時間で待つ`() {
         val readinessCommand = "bash .github/scripts/wait-for-android-package-service.sh"
+        val prebuildCommand = "assembleDebug assembleDebugAndroidTest"
 
         assertTrue(workflow.contains(readinessCommand))
+        assertTrue(workflow.contains(prebuildCommand))
+        assertTrue(
+            workflow.indexOf(prebuildCommand) <
+                workflow.indexOf("ReactiveCircus/android-emulator-runner"),
+        )
         assertTrue(
             workflow.indexOf(readinessCommand) <
                 workflow.indexOf("connectedDebugAndroidTest"),
         )
+        assertTrue(workflow.contains("-Dorg.gradle.jvmargs=-Xmx1g connectedDebugAndroidTest"))
         assertTrue(readinessScript.contains("#!/usr/bin/env bash"))
         assertTrue(readinessScript.contains("set -euo pipefail"))
         assertTrue(readinessScript.contains("attempt <= 90"))
