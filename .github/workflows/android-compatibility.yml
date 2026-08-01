@@ -53,6 +53,8 @@ jobs:
         uses: ReactiveCircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808 # v2
         with:
           api-level: ${{ matrix.api-level }}
+          # API 37 is a preview SDK and is not published on the stable SDK channel yet.
+          channel: ${{ matrix.api-level == 37 && 'canary' || 'stable' }}
           target: google_apis
           arch: x86_64
           disable-animations: true
