@@ -9,6 +9,9 @@ import com.quotto.fridgemanager.domain.inventory.IngredientName
 import com.quotto.fridgemanager.domain.inventory.InventoryBatch
 import com.quotto.fridgemanager.domain.inventory.InventoryRepository
 import com.quotto.fridgemanager.domain.inventory.StoredIngredient
+import com.quotto.fridgemanager.domain.inventory.InventoryCommit
+import com.quotto.fridgemanager.domain.inventory.StockUpdate
+import com.quotto.fridgemanager.domain.inventory.UpdateMethod
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import java.util.concurrent.atomic.AtomicLong
@@ -25,6 +28,9 @@ data class CandidateReviewItem(
     val nameError: String? = null,
     val quantityError: String? = null,
     val unitError: String? = null,
+    val updateMethod: UpdateMethod? = null,
+    val resultQuantity: String? = null,
+    val updateError: String? = null,
 )
 
 data class CandidateReviewState(
@@ -33,12 +39,16 @@ data class CandidateReviewState(
     val batchError: String? = null,
     val loadingError: String? = null,
     val isLoading: Boolean = false,
+    val isCommitting: Boolean = false,
+    val commitError: String? = null,
     val validatedDrafts: List<IngredientDraft> = emptyList(),
 ) {
-    val canProceed: Boolean = !isLoading && loadingError == null && batchError == null &&
+    val canProceed: Boolean = !isLoading && !isCommitting && loadingError == null &&
+        batchError == null &&
         items.any { it.included } && items.filter { it.included }.all {
             runCatching { IngredientDraft.create(it.name, it.quantity, it.unit) }.isSuccess &&
-                it.nameError == null && it.quantityError == null && it.unitError == null
+                it.nameError == null && it.quantityError == null && it.unitError == null &&
+                (it.existingIngredient == null || (it.updateMethod != null && it.updateError == null))
         }
 }
 
@@ -74,12 +84,12 @@ class CandidateReviewPresenter(private val repository: InventoryRepository) {
         }
         if (request != loadGeneration.get()) return state
         inventory = loadedInventory
-        state = CandidateReviewState(
+        state = refreshDuplicates(CandidateReviewState(
             items = candidates.take(InventoryBatch.MAX_ITEMS).map(::toItem),
             warnings = warnings,
             batchError = if (candidates.size > InventoryBatch.MAX_ITEMS) "候補は30件までです" else null,
             loadingError = loadingError,
-        )
+        ))
         return state
     }
 
@@ -104,33 +114,73 @@ class CandidateReviewPresenter(private val repository: InventoryRepository) {
     }
 
     fun updateCandidate(id: String, name: String, quantity: String, unit: String): CandidateReviewState {
-        state = state.copy(items = state.items.map { item ->
+        state = refreshDuplicates(state.copy(items = state.items.map { item ->
             val cleared = item.clearDuplicateError()
-            if (item.id != id) cleared else validateFields(cleared.copy(
+            if (item.id != id) cleared else calculateUpdate(validateFields(cleared.copy(
                 name = name.trim(),
                 quantity = quantity.trim(),
                 unit = unit.trim(),
                 existingIngredient = matchExisting(name),
-            ))
-        }, validatedDrafts = emptyList())
+            )))
+        }, validatedDrafts = emptyList()))
         return state
     }
 
     fun excludeCandidate(id: String): CandidateReviewState = setIncluded(id, false)
     fun restoreCandidate(id: String): CandidateReviewState = setIncluded(id, true)
 
+    fun selectUpdateMethod(id: String, method: UpdateMethod): CandidateReviewState {
+        state = state.copy(
+            items = state.items.map { item ->
+                if (item.id != id) item else calculateUpdate(item.copy(updateMethod = method))
+            },
+            validatedDrafts = emptyList(),
+        )
+        return state
+    }
+
+    fun mergeDuplicatesInto(id: String): CandidateReviewState {
+        val selected = state.items.firstOrNull { it.id == id } ?: return state
+        val normalized = runCatching { IngredientName.from(selected.name).normalizedValue }.getOrNull()
+            ?: return state
+        state = state.copy(
+            items = state.items.map { item ->
+                if (item.id != id && item.included &&
+                    runCatching { IngredientName.from(item.name).normalizedValue }.getOrNull() == normalized
+                ) {
+                    item.copy(included = false).clearDuplicateError()
+                } else {
+                    item.clearDuplicateError()
+                }
+            },
+            batchError = null,
+            validatedDrafts = emptyList(),
+        )
+        return refreshDuplicates(state)
+    }
+
     fun handoff(): CandidateReviewResult {
         val drafts = mutableListOf<IngredientDraft>()
         var invalid = false
         val validated = state.items.map { item ->
             if (!item.included) return@map item.copy(nameError = null, quantityError = null, unitError = null)
-            val checked = validateFields(item)
-            if (checked.nameError != null || checked.quantityError != null || checked.unitError != null) {
+            val checked = calculateUpdate(validateFields(item))
+            if (checked.nameError != null || checked.quantityError != null || checked.unitError != null ||
+                (checked.existingIngredient != null && (checked.updateMethod == null || checked.updateError != null))
+            ) {
                 invalid = true
                 return@map checked
             }
             try {
-                drafts += IngredientDraft.create(item.name, item.quantity, item.unit)
+                drafts += if (checked.existingIngredient == null) {
+                    IngredientDraft.create(checked.name, checked.quantity, checked.unit)
+                } else {
+                    IngredientDraft.create(
+                        checked.name,
+                        checked.resultQuantity ?: checked.quantity,
+                        checked.unit,
+                    )
+                }
                 checked
             } catch (error: DomainValidationException) {
                 invalid = true
@@ -170,9 +220,24 @@ class CandidateReviewPresenter(private val repository: InventoryRepository) {
         })
     }
 
+    suspend fun commit(candidates: List<ReviewedCandidate>) {
+        repository.commit(
+            InventoryCommit.create(
+                newItems = candidates.filter { it.existingIngredient == null }.map { it.draft },
+                updates = candidates.mapNotNull { candidate ->
+                    candidate.existingIngredient?.copy(
+                        name = candidate.draft.name,
+                        quantity = candidate.draft.quantity,
+                        unit = candidate.draft.unit,
+                    )
+                },
+            ),
+        )
+    }
+
     private fun toItem(candidate: AnalysisCandidate): CandidateReviewItem {
         val name = candidate.name.orEmpty().trim()
-        return validateFields(CandidateReviewItem(
+        return calculateUpdate(validateFields(CandidateReviewItem(
             id = UUID.randomUUID().toString(),
             name = name,
             quantity = candidate.quantity.orEmpty().trim(),
@@ -180,7 +245,7 @@ class CandidateReviewPresenter(private val repository: InventoryRepository) {
             evidence = candidate.evidence,
             requiresReview = candidate.requiresReview,
             existingIngredient = matchExisting(name),
-        ))
+        )))
     }
 
     private fun setIncluded(id: String, included: Boolean): CandidateReviewState {
@@ -188,6 +253,7 @@ class CandidateReviewPresenter(private val repository: InventoryRepository) {
             val cleared = it.clearDuplicateError()
             if (it.id == id) cleared.copy(included = included) else cleared
         }, batchError = null, validatedDrafts = emptyList())
+        state = refreshDuplicates(state)
         return state
     }
 
@@ -205,6 +271,47 @@ class CandidateReviewPresenter(private val repository: InventoryRepository) {
         quantityError = validationError { com.quotto.fridgemanager.domain.inventory.InventoryQuantity.from(item.quantity) },
         unitError = validationError { com.quotto.fridgemanager.domain.inventory.InventoryUnit.fromSymbol(item.unit) },
     )
+
+    private fun calculateUpdate(item: CandidateReviewItem): CandidateReviewItem {
+        val existing = item.existingIngredient ?: return item.copy(
+            updateMethod = null,
+            resultQuantity = null,
+            updateError = null,
+        )
+        val method = item.updateMethod ?: return item.copy(
+            resultQuantity = null,
+            updateError = "増加・減少・置換を選択してください",
+        )
+        return try {
+            val draft = IngredientDraft.create(item.name, item.quantity, item.unit)
+            if (draft.unit != existing.unit) {
+                item.copy(resultQuantity = null, updateError = "登録済み食材と同じ単位を選択してください")
+            } else {
+                item.copy(
+                    resultQuantity = StockUpdate.apply(existing.quantity, draft.quantity, method).toString(),
+                    updateError = null,
+                )
+            }
+        } catch (_: DomainValidationException) {
+            item.copy(resultQuantity = null, updateError = null)
+        }
+    }
+
+    private fun refreshDuplicates(source: CandidateReviewState): CandidateReviewState {
+        val groups = source.items.withIndex()
+            .filter { it.value.included }
+            .mapNotNull { indexed ->
+                runCatching { IngredientName.from(indexed.value.name).normalizedValue }
+                    .getOrNull()?.let { it to indexed.index }
+            }
+            .groupBy({ it.first }, { it.second })
+            .filterValues { it.size > 1 }
+        val duplicateIndices = groups.values.flatten().toSet()
+        return source.copy(items = source.items.mapIndexed { index, item ->
+            if (index in duplicateIndices) item.copy(nameError = DUPLICATE_CANDIDATE_MESSAGE)
+            else item.clearDuplicateError()
+        })
+    }
 }
 
 private const val DUPLICATE_CANDIDATE_MESSAGE = "同じ食材名の候補を統合または除外してください"

@@ -9,6 +9,12 @@ interface InventoryRepository {
     fun observeAll(): Flow<List<StoredIngredient>>
     suspend fun searchByName(normalizedQuery: String): List<StoredIngredient>
     suspend fun saveBatch(batch: InventoryBatch)
+    suspend fun commit(commit: InventoryCommit) {
+        if (commit.updates.isNotEmpty()) {
+            throw UnsupportedOperationException("Mixed inventory commit is not supported")
+        }
+        saveBatch(InventoryBatch.create(commit.newItems))
+    }
     suspend fun getById(id: String): StoredIngredient? = getAll().firstOrNull { it.id == id }
     suspend fun update(ingredient: StoredIngredient) {
         throw UnsupportedOperationException("Inventory update is not supported")
