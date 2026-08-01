@@ -49,7 +49,10 @@ jobs:
           cache: npm
 
       - name: Reject known high-severity vulnerabilities
-        run: npm audit --audit-level=high --ignore-scripts
+        run: |
+          # Issue #88: dev/stg限定の期限付き例外。修正版CDK公開時に削除する。
+          npm audit --audit-level=high --ignore-scripts --json > "$RUNNER_TEMP/npm-audit.json" || true
+          node .github/scripts/check-npm-audit.mjs < "$RUNNER_TEMP/npm-audit.json"
 
   secrets:
     name: Secret scan
