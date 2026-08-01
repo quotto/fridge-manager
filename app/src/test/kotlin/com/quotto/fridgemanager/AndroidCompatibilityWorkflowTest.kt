@@ -40,6 +40,12 @@ class AndroidCompatibilityWorkflowTest {
                 workflow.indexOf("connectedDebugAndroidTest"),
         )
         assertTrue(workflow.contains("-Dorg.gradle.jvmargs=-Xmx1g connectedDebugAndroidTest"))
+        assertTrue(workflow.contains("sudo setfacl -m \"u:\${USER}:rw\" /dev/kvm"))
+        assertTrue(workflow.contains("disable-linux-hw-accel: false"))
+        assertTrue(
+            workflow.indexOf("/dev/kvm") <
+                workflow.indexOf("ReactiveCircus/android-emulator-runner"),
+        )
         assertTrue(readinessScript.contains("#!/usr/bin/env bash"))
         assertTrue(readinessScript.contains("set -euo pipefail"))
         assertTrue(readinessScript.contains("attempt <= 90"))
