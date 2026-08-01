@@ -160,6 +160,7 @@ class AuthorizedAnalysisApiClientTest {
         """{"requestId":"018f47a0-90c0-7d54-b92d-4285f7fb3312","status":"failed","error":{"code":"$code","retryable":true$extra}}"""
 
     private class CountingFirebaseAuth : FirebaseAuthGateway {
+        override suspend fun deleteCurrentAnonymousUser() = Unit
         private val user = AnonymousUser("anonymous-user")
         var idTokenCalls = 0
         override fun currentAnonymousUser(): AnonymousUser = user

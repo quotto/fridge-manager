@@ -33,6 +33,7 @@ import com.quotto.fridgemanager.presentation.inventory.AiUpdateCandidatePresente
 import com.quotto.fridgemanager.domain.analysis.AnalysisCurrentItem
 import com.quotto.fridgemanager.domain.inventory.StoredIngredient
 import kotlinx.coroutines.CancellationException
+import com.quotto.fridgemanager.presentation.settings.DataDeletionCoordinator
 
 @Composable
 fun AppNavigation(
@@ -42,6 +43,7 @@ fun AppNavigation(
     candidateReviewPresenter: CandidateReviewPresenter,
     aiUpdateCandidatePresenter: AiUpdateCandidatePresenter,
     analysisApiClient: AnalysisClient?,
+    dataDeletionCoordinator: DataDeletionCoordinator,
     onReloadInventory: () -> Unit,
 ) {
     val controller = rememberNavController()
@@ -173,7 +175,7 @@ fun AppNavigation(
                 } ?: Text("更新対象を読み込んでいます", modifier = Modifier.padding(24.dp))
             }
             composable(AppDestination.Settings.route) {
-                SettingsScreen()
+                SettingsScreen(dataDeletionCoordinator)
             }
         }
     }
