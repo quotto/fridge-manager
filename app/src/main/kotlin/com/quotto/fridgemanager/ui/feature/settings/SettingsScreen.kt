@@ -1,6 +1,7 @@
 package com.quotto.fridgemanager.ui.feature.settings
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -12,7 +13,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
@@ -24,18 +29,29 @@ import com.quotto.fridgemanager.ui.component.ScreenHeader
 import com.quotto.fridgemanager.presentation.settings.DataDeletionCoordinator
 import com.quotto.fridgemanager.presentation.settings.DataDeletionState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalUriHandler
 import kotlinx.coroutines.launch
+
+internal object PrivacyLinks {
+    const val policy = "https://quotto.github.io/fridge-manager/privacy-policy.html"
+    const val dataDeletion = "https://quotto.github.io/fridge-manager/data-deletion.html"
+}
 
 @Composable
 fun SettingsScreen(coordinator: DataDeletionCoordinator) {
     val state by coordinator.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val uriHandler = LocalUriHandler.current
+    var linkOpenFailed by rememberSaveable { mutableStateOf(false) }
     SettingsContent(
         deletionState = state,
         onRequestDeletion = coordinator::requestConfirmation,
         onConfirmDeletion = { scope.launch { coordinator.confirmDeletion() } },
         onDismissDeletion = coordinator::dismissConfirmation,
         onRetryDeletion = { scope.launch { coordinator.retry() } },
+        onOpenPrivacyPolicy = { linkOpenFailed = !openPrivacyLink(uriHandler, PrivacyLinks.policy) },
+        onOpenDataDeletionGuide = { linkOpenFailed = !openPrivacyLink(uriHandler, PrivacyLinks.dataDeletion) },
+        linkOpenFailed = linkOpenFailed,
     )
 }
 
@@ -46,6 +62,9 @@ fun SettingsContent(
     onConfirmDeletion: () -> Unit,
     onDismissDeletion: () -> Unit,
     onRetryDeletion: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit = {},
+    onOpenDataDeletionGuide: () -> Unit = {},
+    linkOpenFailed: Boolean = false,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(title = "設定")
@@ -54,7 +73,29 @@ fun SettingsContent(
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
                 .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            Text("プライバシーとデータの取扱い")
+            Text("食材データは端末内だけに保存し、クラウド同期やバックアップは行いません。画像で既存在庫を更新する場合は、対象の食材名・現在数量・単位を解析目的でAWSとAmazon Bedrockへ一時送信し、永続保存しません。")
+            Text("解析画像はAWSとAmazon Bedrockへ送信しますが、クラウドへ永続保存しません。端末の一時画像は遅くとも1時間以内に削除します。")
+            Text("解析結果は端末へ返し、クラウド側では継続保存しません。")
+            Text("Firebase匿名認証とApp Checkを不正利用防止に使用します。")
+            Text("App Checkのリプレイ保護tokenはFirebaseで最大30日保持されます。")
+            Text("Firebase Authenticationは認証情報とIPアドレス等を処理します。")
+            Text("Firebase Crashlyticsはクラッシュ情報と端末識別子を障害対応のため処理します。")
+            Text("アプリケーションログは本番環境で90日保持し、画像・在庫・トークン・匿名ユーザーIDを記録しません。")
+            OutlinedButton(onClick = onOpenPrivacyPolicy, modifier = Modifier.fillMaxWidth()) {
+                Text("プライバシーポリシーを開く")
+            }
+            OutlinedButton(onClick = onOpenDataDeletionGuide, modifier = Modifier.fillMaxWidth()) {
+                Text("アプリ外の削除案内を開く")
+            }
+            if (linkOpenFailed) {
+                Text("ブラウザを開けませんでした。次のURLをコピーして確認してください。")
+                Text(PrivacyLinks.policy)
+                Text(PrivacyLinks.dataDeletion)
+            }
+            Text("アプリのデータ消去またはアンインストール後、端末内データは復元できません。")
             Text("利用データの削除")
             Text("端末内の全食材データ、一時画像、Firebase 匿名ユーザーを削除します。")
             Button(
@@ -68,7 +109,8 @@ fun SettingsContent(
             ) { Text("すべての利用データを削除") }
             when (deletionState) {
                 DataDeletionState.Deleting -> Text("削除しています")
-                DataDeletionState.Succeeded -> Text("すべての利用データを削除しました")
+                DataDeletionState.Succeeded ->
+                    Text("端末データとFirebase匿名ユーザーの削除を受け付けました。提供者のバックアップやセキュリティ記録は各保持期限まで残る場合があります。")
                 is DataDeletionState.Failed -> {
                     val localStatus = if (deletionState.localDataDeleted) "削除済み" else "未完了"
                     val temporaryStatus = if (deletionState.temporaryImagesDeleted) "削除済み" else "未完了"
@@ -111,3 +153,6 @@ fun SettingsContent(
         )
     }
 }
+
+internal fun openPrivacyLink(uriHandler: UriHandler, url: String): Boolean =
+    runCatching { uriHandler.openUri(url) }.isSuccess

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Fridge Manager プライバシーポリシー</title>
+</head>
+<body>
+  <main>
+    <h1>Fridge Manager プライバシーポリシー</h1>
+    <p>施行日: 2026年8月1日</p>
+    <p>最終更新日: 2026年8月1日</p>
+    <p>公開URL: https://quotto.github.io/fridge-manager/privacy-policy.html</p>
+    <p>本アプリは日本国内向けに、端末内の食材在庫管理と任意の画像解析機能を提供します。</p>
+
+    <h2>取得・処理する情報</h2>
+    <ul>
+      <li>食材名、数量、単位は端末内だけに保存し、クラウド同期しません。画像による既存在庫の更新時に限り、対象食材の名前、現在数量、単位を解析目的でAWSおよびAmazon Bedrockへ一時送信し、永続保存しません。</li>
+      <li>画像解析を選択した場合、選択した写真をAWSおよびAmazon Bedrockへ送信します。</li>
+      <li>Firebase Authenticationは匿名ユーザーID、IPアドレス等の認証情報を処理します。</li>
+      <li>Firebase App CheckおよびPlay Integrityはアプリ・端末の真正性確認に必要なtokenとattestation情報を処理します。</li>
+      <li>Firebase Crashlyticsは障害対応のため、Crashlytics Installation UUID、Firebase Installation ID、クラッシュログ、スタックトレース、端末・OS情報を処理します。</li>
+      <li>AWSはrequest ID、モデルID、入出力token数、合計試行回数、処理結果区分、ステータスコード、処理時間、エラー種別、provider呼出し有無、匿名ユーザーIDとペイロードの不可逆hash、クォータ利用数を処理します。</li>
+    </ul>
+
+    <h2>利用目的・送信先・処理場所</h2>
+    <ul>
+      <li>AWSとAmazon Bedrock: 解析画像、および既存在庫更新時の対象食材の名前、現在数量、単位を使った食材候補の抽出、不正利用防止、障害対応。東京リージョンを起点とし、BedrockはJP Geoに限定します。</li>
+      <li>Firebase Authentication: 匿名認証。Googleの米国の処理基盤で処理されます。</li>
+      <li>Firebase App Check、Firebase Crashlytics: 不正利用防止と障害対応。Googleのグローバルなインフラストラクチャで処理されます。</li>
+      <li>Google Play Integrity: アプリ・端末の真正性確認。Googleのインフラストラクチャで処理されます。</li>
+    </ul>
+    <p>国外処理には、送信時のTLS暗号化、アクセス制御、最小権限、ログ項目の許可リスト化、および各委託先とのデータ保護条件を適用します。</p>
+
+    <h2>保持と削除</h2>
+    <ul>
+      <li>AWSとAmazon Bedrockは解析画像と解析結果を永続ストレージへ保存せず、処理完了時にメモリ上から破棄します。モデル学習には使用せず、Bedrockのdata retention modeはnoneに限定します。</li>
+      <li>端末で送信準備に使う一時画像は処理後速やかに削除し、失敗時も再試行して遅くとも1時間以内に削除します。</li>
+      <li>App Checkのリプレイ保護tokenは最大30日、Crashlyticsのクラッシュ情報は90日保持されます。</li>
+      <li>Firebase Authenticationの認証情報とIPアドレスは数週間保持される場合があり、ユーザー削除後もバックアップからの削除完了まで最大180日を要する場合があります。</li>
+      <li>AWSの本番アプリケーションログは90日、クォータ・冪等性管理情報は設定されたTTLまで保持します。画像、在庫、token、匿名ユーザーIDそのものは記録しません。</li>
+      <li>設定画面から端末データ、一時画像、Firebase匿名ユーザーを削除できます。提供者のバックアップ、セキュリティ記録、集計情報は上記期限まで残る場合があります。</li>
+    </ul>
+
+    <h2 id="deletion">アプリ外からの削除案内</h2>
+    <p>本アプリの匿名認証は、利用者が認証情報を登録するユーザー向けアカウント機能ではないと判断しています。アプリを利用できる場合は設定画面から削除してください。利用できない場合は、<a href="https://quotto.github.io/fridge-manager/data-deletion.html">アプリ外の削除案内</a>を確認してください。</p>
+    <p>削除案内URL: https://quotto.github.io/fridge-manager/data-deletion.html</p>
+
+    <h2>安全管理</h2>
+    <p>通信のTLS暗号化、認証tokenとApp Check tokenの検証、レート制限、入力検証、最小権限、ログ項目の許可リスト化を行います。</p>
+
+    <h2>お問い合わせ</h2>
+    <p><a href="https://docs.google.com/forms/d/e/PLACEHOLDER/viewform">Googleフォーム（準備中）</a></p>
+    <p>上記は仮URLです。Googleフォーム準備完了時に有効なURLへ差し替えます。</p>
+  </main>
+</body>
+</html>
