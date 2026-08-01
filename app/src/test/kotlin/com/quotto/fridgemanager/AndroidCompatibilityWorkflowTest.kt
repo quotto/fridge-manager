@@ -8,6 +8,8 @@ import org.junit.Test
 class AndroidCompatibilityWorkflowTest {
     private val workflow = File("../.github/workflows/android-compatibility.yml").readText()
     private val sanitizer = File("../.github/scripts/sanitize-android-test-results.mjs").readText()
+    private val readinessScript =
+        File("../.github/scripts/wait-for-android-package-service.sh").readText()
 
     @Test
     fun `Android 11から17の各世代を代表するAPIでinstrumentationを実行する`() {
@@ -20,6 +22,24 @@ class AndroidCompatibilityWorkflowTest {
 
         assertEquals(listOf("30", "31", "32", "33", "34", "35", "36", "37"), configuredApis)
         assertTrue(workflow.contains("connectedDebugAndroidTest"))
+    }
+
+    @Test
+    fun `instrumentation開始前にpackage serviceの準備完了を有界時間で待つ`() {
+        val readinessCommand = "bash .github/scripts/wait-for-android-package-service.sh"
+
+        assertTrue(workflow.contains(readinessCommand))
+        assertTrue(
+            workflow.indexOf(readinessCommand) <
+                workflow.indexOf("connectedDebugAndroidTest"),
+        )
+        assertTrue(readinessScript.contains("#!/usr/bin/env bash"))
+        assertTrue(readinessScript.contains("set -euo pipefail"))
+        assertTrue(readinessScript.contains("attempt <= 90"))
+        assertTrue(readinessScript.contains("attempt == 90"))
+        assertTrue(readinessScript.contains("adb shell service check package"))
+        assertTrue(readinessScript.contains("sleep 2"))
+        assertTrue(readinessScript.contains("exit 1"))
     }
 
     @Test
