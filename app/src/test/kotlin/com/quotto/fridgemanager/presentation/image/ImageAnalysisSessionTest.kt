@@ -139,7 +139,7 @@ class ImageAnalysisSessionTest {
     ) = ImageAnalysisSession(this, StandardTestDispatcher(testScheduler), process) { image, _ -> send(image); null }
 
     private fun image(width: Int, height: Int) = PreprocessedImage(
-        File.createTempFile("preview-", ".jpg").apply { writeBytes(byteArrayOf(1, 2, 3)) },
+        File.createTempFile("image-upload-", ".jpg").apply { writeBytes(byteArrayOf(1, 2, 3)) },
         width, height, minOf(width, height) < 480,
     )
     private fun asset() = TestAsset()
