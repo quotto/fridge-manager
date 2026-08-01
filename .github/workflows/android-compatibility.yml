@@ -46,6 +46,9 @@ jobs:
       - name: Build instrumentation APKs before starting emulator
         run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
 
+      - name: Grant this runner access to KVM
+        run: sudo setfacl -m "u:${USER}:rw" /dev/kvm
+
       - name: Run instrumentation suite
         uses: ReactiveCircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808 # v2
         with:
@@ -53,6 +56,7 @@ jobs:
           target: google_apis
           arch: x86_64
           disable-animations: true
+          disable-linux-hw-accel: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             bash .github/scripts/wait-for-android-package-service.sh
