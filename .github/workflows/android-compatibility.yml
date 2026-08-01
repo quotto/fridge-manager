@@ -43,6 +43,9 @@ jobs:
         with:
           cache-read-only: true
 
+      - name: Build instrumentation APKs before starting emulator
+        run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+
       - name: Run instrumentation suite
         uses: ReactiveCircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808 # v2
         with:
@@ -53,7 +56,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             bash .github/scripts/wait-for-android-package-service.sh
-            ./gradlew --no-daemon connectedDebugAndroidTest
+            ./gradlew --no-daemon -Dorg.gradle.jvmargs=-Xmx1g connectedDebugAndroidTest
 
       - name: Build privacy-safe test evidence
         if: always()
