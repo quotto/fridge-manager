@@ -293,6 +293,7 @@ fun ImageInputContent(
             Text("解析する画像を1枚選択してください")
             Text("食材以外や人物・個人情報が映り込んでいない画像を選んでください。")
             Text("画像はAWSとAmazon Bedrockへ解析目的で送信され、永続保存やモデル学習には使用されません。")
+            Text("既存在庫を画像で更新する場合は、対象の食材名・現在数量・単位も解析目的で一時送信し、永続保存しません。")
             Text("解析画像と結果はクラウドへ永続保存しません。端末の一時画像は遅くとも1時間以内に削除します。")
             when (analysisState) {
                 ImageAnalysisState.Processing -> Text("送信画像を準備しています")

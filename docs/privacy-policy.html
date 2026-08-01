@@ -15,7 +15,7 @@
 
     <h2>取得・処理する情報</h2>
     <ul>
-      <li>食材名、数量、単位は端末内だけに保存し、クラウド同期しません。</li>
+      <li>食材名、数量、単位は端末内だけに保存し、クラウド同期しません。画像による既存在庫の更新時に限り、対象食材の名前、現在数量、単位を解析目的でAWSおよびAmazon Bedrockへ一時送信し、永続保存しません。</li>
       <li>画像解析を選択した場合、選択した写真をAWSおよびAmazon Bedrockへ送信します。</li>
       <li>Firebase Authenticationは匿名ユーザーID、IPアドレス等の認証情報を処理します。</li>
       <li>Firebase App CheckおよびPlay Integrityはアプリ・端末の真正性確認に必要なtokenとattestation情報を処理します。</li>
@@ -25,7 +25,7 @@
 
     <h2>利用目的・送信先・処理場所</h2>
     <ul>
-      <li>AWSとAmazon Bedrock: 食材候補の抽出、不正利用防止、障害対応。東京リージョンを起点とし、BedrockはJP Geoに限定します。</li>
+      <li>AWSとAmazon Bedrock: 解析画像、および既存在庫更新時の対象食材の名前、現在数量、単位を使った食材候補の抽出、不正利用防止、障害対応。東京リージョンを起点とし、BedrockはJP Geoに限定します。</li>
       <li>Firebase Authentication: 匿名認証。Googleの米国の処理基盤で処理されます。</li>
       <li>Firebase App Check、Firebase Crashlytics: 不正利用防止と障害対応。Googleのグローバルなインフラストラクチャで処理されます。</li>
       <li>Google Play Integrity: アプリ・端末の真正性確認。Googleのインフラストラクチャで処理されます。</li>

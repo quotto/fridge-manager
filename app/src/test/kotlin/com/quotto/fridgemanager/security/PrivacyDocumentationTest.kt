@@ -24,6 +24,8 @@ class PrivacyDocumentationTest {
             "180日",
             "1時間以内",
             "アプリ外からの削除案内",
+            "対象食材の名前、現在数量、単位",
+            "永続保存しません",
         ).forEach { required -> assertTrue(required, policy.contains(required)) }
     }
 
@@ -41,6 +43,8 @@ class PrivacyDocumentationTest {
             "ephemeral",
             "TLS",
             "Analytics SDKは使用しない",
+            "Other user-generated content",
+            "食材名・現在数量・単位",
         )
             .forEach { required -> assertTrue(required, dataSafety.contains(required)) }
         assertTrue(policy.contains("https://quotto.github.io/fridge-manager/privacy-policy.html"))
