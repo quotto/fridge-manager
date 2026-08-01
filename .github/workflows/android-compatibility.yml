@@ -22,7 +22,8 @@ jobs:
       max-parallel: 2
       matrix:
         # Android 11〜17に加え、要件で明示されたAndroid 12Lも検証する。
-        api-level: [30, 31, 32, 33, 34, 35, 36, 37]
+        # Preview SDK is the most availability-sensitive, so validate it first.
+        api-level: [37, 30, 31, 32, 33, 34, 35, 36]
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
