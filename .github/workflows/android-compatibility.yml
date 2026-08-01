@@ -53,13 +53,15 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: ./gradlew --no-daemon connectedDebugAndroidTest
 
+      - name: Build privacy-safe test evidence
+        if: always()
+        run: node .github/scripts/sanitize-android-test-results.mjs
+
       - name: Upload API-specific test evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: android-compatibility-${{ matrix.api-level }}
-          path: |
-            app/build/reports/androidTests/connected/
-            app/build/outputs/androidTest-results/connected/
-          if-no-files-found: warn
+          path: .compatibility-evidence/summary.json
+          if-no-files-found: error
           retention-days: 7
