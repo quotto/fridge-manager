@@ -1,14 +1,19 @@
 package com.quotto.fridgemanager.ui.feature.image
 
+import android.graphics.Bitmap
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.test.core.app.ApplicationProvider
 import android.content.Context
 import com.quotto.fridgemanager.image.PreprocessedImage
 import java.io.File
+import java.io.FileOutputStream
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -83,8 +88,8 @@ class ImageAnalysisScreenTest {
             )
         }
 
-        composeRule.onNodeWithText("この画像を使用する").performClick()
-        composeRule.onNodeWithText("選び直す").performClick()
+        composeRule.onNodeWithText("この画像を使用する").performScrollTo().performClick()
+        composeRule.onNodeWithText("選び直す").performScrollTo().performClick()
 
         assertEquals(1, uses)
         assertEquals(1, discards)
@@ -143,6 +148,27 @@ class ImageAnalysisScreenTest {
         composeRule.onNodeWithText("選び直す").assertIsDisplayed()
         composeRule.onNodeWithText("手動入力に切り替える").performClick()
         assertEquals(1, manualFallbacks)
+        image.close()
+    }
+
+    @Test
+    fun `有効な変換画像を読み込んだ後もプレビューを描画して送信できる`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val file = File.createTempFile("preview-valid-", ".jpg", context.cacheDir)
+        Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888).also { bitmap ->
+            FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+            bitmap.recycle()
+        }
+        val image = PreprocessedImage(file, 640, 480, false)
+
+        composeRule.setContent {
+            ImagePreviewContent(image, onSend = {}, onReselect = {})
+        }
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("この画像を送信する").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("この画像を送信する").assertIsDisplayed().assertIsEnabled()
         image.close()
     }
 }
