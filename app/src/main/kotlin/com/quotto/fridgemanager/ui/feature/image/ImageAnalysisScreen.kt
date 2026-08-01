@@ -350,7 +350,7 @@ fun ImagePreviewContent(
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(title = "送信画像の確認")
         Column(
-            modifier = Modifier.padding(24.dp),
+            modifier = Modifier.padding(24.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("AIへ実際に送信する変換後画像です")

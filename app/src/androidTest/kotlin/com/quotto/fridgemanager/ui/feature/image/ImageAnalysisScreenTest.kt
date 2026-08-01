@@ -168,7 +168,10 @@ class ImageAnalysisScreenTest {
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithText("この画像を送信する").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText("この画像を送信する").assertIsDisplayed().assertIsEnabled()
+        composeRule.onNodeWithText("この画像を送信する")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertIsEnabled()
         image.close()
     }
 }
