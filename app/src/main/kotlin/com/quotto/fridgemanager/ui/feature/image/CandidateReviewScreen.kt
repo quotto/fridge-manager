@@ -181,8 +181,9 @@ private fun UnitSelector(selected: String, onSelected: (String) -> Unit) {
 }
 
 private fun evidenceLabel(value: String): String = when (value) {
-    "VISIBLE" -> "画像で確認"
-    "INFERRED" -> "画像から推定"
+    "VISIBLE_COUNT" -> "画像内の個数"
+    "PACKAGE_LABEL" -> "パッケージ表示"
+    "VISUAL_ESTIMATE" -> "画像からの推定"
     "UNKNOWN", "不明" -> "不明"
     "MANUAL" -> "手動追加"
     else -> "不明"

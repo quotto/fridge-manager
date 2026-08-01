@@ -4,7 +4,6 @@ import android.content.Context
 import com.google.android.gms.tasks.Task
 import com.google.firebase.FirebaseApp
 import com.google.firebase.appcheck.FirebaseAppCheck
-import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import com.google.firebase.auth.FirebaseAuth
 import com.quotto.fridgemanager.domain.auth.AnonymousUser
 import com.quotto.fridgemanager.domain.auth.AppCheckGateway
@@ -70,7 +69,7 @@ object FirebaseAuthComposition {
         val app = FirebaseApp.initializeApp(context.applicationContext)
             ?: return unavailableCoordinator(logger)
         val appCheck = FirebaseAppCheck.getInstance(app).apply {
-            installAppCheckProviderFactory(PlayIntegrityAppCheckProviderFactory.getInstance())
+            AppCheckProviderInstaller.install(this)
         }
         return AuthCoordinator(
             firebaseAuth = FirebaseAnonymousAuthGateway(FirebaseAuth.getInstance(app)),

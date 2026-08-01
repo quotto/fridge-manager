@@ -81,7 +81,6 @@ dependencies {
     implementation(libs.androidx.work.runtime)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
-    implementation(libs.firebase.appcheck.playintegrity)
     implementation(libs.firebase.crashlytics)
     implementation(libs.kotlinx.serialization.json)
 
@@ -89,6 +88,8 @@ dependencies {
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    debugImplementation(libs.firebase.appcheck.debug)
+    releaseImplementation(libs.firebase.appcheck.playintegrity)
 
     testImplementation(libs.junit4)
     testImplementation(libs.kotlinx.coroutines.test)
