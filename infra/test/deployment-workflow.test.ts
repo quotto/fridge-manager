@@ -55,6 +55,15 @@ describe('cloud deployment workflow', () => {
     expect(read('.github/workflows/rollback-release.yml')).toContain('bash .github/scripts/verify-aws-account.sh');
   });
 
+  it('stgの失敗済みAPI stackだけを再deploy前に削除する', () => {
+    const script = read('.github/scripts/deploy-cloud.sh');
+    expect(script).toContain('ROLLBACK_COMPLETE');
+    expect(script).toContain('aws cloudformation delete-stack --stack-name "$api_stack"');
+    expect(script).toContain('aws cloudformation wait stack-delete-complete --stack-name "$api_stack"');
+    expect(script).toContain('[[ "$environment" == stg ]]');
+    expect(script).not.toContain('delete-stack --stack-name "$foundation"');
+  });
+
   it('既存AWS予算通知先を運用通知secretとして再利用する', () => {
     const deployScript = read('.github/scripts/deploy-cloud.sh');
     const rollbackWorkflow = read('.github/workflows/rollback-release.yml');
