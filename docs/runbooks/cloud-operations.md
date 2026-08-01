@@ -10,6 +10,10 @@ Issue、対象commit SHA、GitHub Actions run URL、開始・終了時刻、判�
 
 GitHub Environments `staging`、`production-plan`、`production` を作成し、`production` にrequired reviewerを設定する。各Environmentに次のvariableを登録する。
 
+Repository variable `PRODUCTION_DEPLOY_ENABLED` は、stagingの実機能確認とHigh/Critical依存監査の完全成功後に限り `true` とする。それ以外は未設定または `false` を維持する。production-planはこの変数に加えて例外なしの `npm audit --audit-level=high` を再実行し、期限付きdev/stg例外が残る間はproductionへ進まない。
+
+production deployの完了・中止・失敗後は `PRODUCTION_DEPLOY_ENABLED` を直ちに `false` へ戻し、Repository variablesとworkflow runで停止を確認する。期限付き例外の失効でSecurity workflowが失敗した場合は #88 を再開し、例外を延長せず修正版CDKの有無を再評価する。
+
 - `AWS_DEPLOY_ROLE_ARN`, `AWS_PLAN_ROLE_ARN`, `AWS_OPERATIONS_ROLE_ARN`, `PROMOTION_ARTIFACT_BUCKET`
 - `FIREBASE_PROJECT_ID`, `FIREBASE_PROJECT_NUMBER`, `FIREBASE_APP_IDS`
 - `GOOGLE_WIF_AUDIENCE`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`
