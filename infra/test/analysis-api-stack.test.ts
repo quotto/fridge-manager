@@ -97,12 +97,23 @@ describe('AnalysisApiStack', () => {
     }) } });
   });
 
-  it('Lambdaを58秒、Regional REST統合を60秒にする', () => {
+  it('devはLambdaを58秒、Regional REST統合を既定quotaの29秒にする', () => {
     template.hasResourceProperties('AWS::Lambda::Function', { Timeout: 58 });
     const analysisFunction = Object.values(template.findResources('AWS::Lambda::Function'))
       .find((resource) => resource.Properties.FunctionName === 'fridge-manager-dev-analysis')!;
     expect(analysisFunction.Properties).not.toHaveProperty('ReservedConcurrentExecutions');
-    expect(JSON.stringify(template.toJSON())).toContain('60000');
+    const restApi = Object.values(template.findResources('AWS::ApiGateway::RestApi'))[0]!;
+    const body = restApi.Properties.Body as { paths: Record<string, { post: Record<string, unknown> }> };
+    expect(body.paths['/v1/analysis']!.post['x-amazon-apigateway-integration']).toMatchObject({ timeoutInMillis: 29_000 });
+  });
+
+  it('prodはRegional REST統合の60秒要件を維持する', () => {
+    const prodTemplate = Template.fromStack(new AnalysisApiStack(new App(), 'ProdAnalysisApi', {
+      config: getEnvironmentConfig('prod'),
+    }));
+    const restApi = Object.values(prodTemplate.findResources('AWS::ApiGateway::RestApi'))[0]!;
+    const body = restApi.Properties.Body as { paths: Record<string, { post: Record<string, unknown> }> };
+    expect(body.paths['/v1/analysis']!.post['x-amazon-apigateway-integration']).toMatchObject({ timeoutInMillis: 60_000 });
   });
 
   it('prodの解析Lambdaだけ予約同時実行5で費用を保護する', () => {
