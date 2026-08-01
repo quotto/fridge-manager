@@ -119,7 +119,13 @@ fun AppNavigation(
             composable(AppDestination.ImageAnalysis.route) {
                 ImageAnalysisScreen(
                     candidateReviewPresenter = candidateReviewPresenter,
-                    onCandidatesValidated = { /* #31 が原子的な一括確定を接続する境界。 */ },
+                    onCandidatesValidated = {
+                        onReloadInventory()
+                        controller.navigate(AppDestination.Inventory.route) {
+                            popUpTo(AppDestination.Inventory.route) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    },
                     onManualRegistration = {
                         controller.navigate(AppDestination.Registration.route)
                     },

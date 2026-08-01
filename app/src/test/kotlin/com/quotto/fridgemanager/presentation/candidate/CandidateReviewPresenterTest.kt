@@ -161,8 +161,48 @@ class CandidateReviewPresenterTest {
         val state = presenter.load(listOf(candidate(name = "ＮＦＫＣ", quantity = "1", unit = "個")))
 
         assertEquals("nfkc", state.items.single().existingIngredient?.id)
+        presenter.selectUpdateMethod(state.items.single().id, com.quotto.fridgemanager.domain.inventory.UpdateMethod.REPLACE)
         val ready = presenter.handoff() as CandidateReviewResult.Ready
         assertEquals("nfkc", ready.candidates.single().existingIngredient?.id)
+    }
+
+    @Test
+    fun existingCandidateRequiresMethodAndProducesFinalAbsoluteValue() = runBlocking {
+        val existing = stored(id = "milk", name = "牛乳", quantity = "2", unit = InventoryUnit.LITER)
+        val presenter = CandidateReviewPresenter(CandidateFakeRepository(listOf(existing)))
+        val loaded = presenter.load(listOf(candidate(name = "牛乳", quantity = "1.25", unit = "L")))
+
+        assertFalse(loaded.canProceed)
+        val increased = presenter.selectUpdateMethod(
+            loaded.items.single().id,
+            com.quotto.fridgemanager.domain.inventory.UpdateMethod.INCREASE,
+        )
+
+        assertEquals("3.25", increased.items.single().resultQuantity)
+        assertTrue(increased.canProceed)
+        val ready = presenter.handoff() as CandidateReviewResult.Ready
+        assertEquals("3.25", ready.candidates.single().draft.quantity.toString())
+        assertEquals(1L, ready.candidates.single().existingIngredient?.updatedAtEpochMillis)
+    }
+
+    @Test
+    fun duplicateCandidatesAreBlockedImmediatelyAndExplicitMergeDoesNotAddQuantities() = runBlocking {
+        val presenter = CandidateReviewPresenter(CandidateFakeRepository())
+        val loaded = presenter.load(
+            listOf(
+                candidate(name = "ＮＦＫＣ", quantity = "1", unit = "個"),
+                candidate(name = "NFKC", quantity = "2", unit = "個"),
+            ),
+        )
+
+        assertFalse(loaded.canProceed)
+        assertNotNull(loaded.items.first().nameError)
+
+        val merged = presenter.mergeDuplicatesInto(loaded.items.first().id)
+
+        assertTrue(merged.canProceed)
+        assertEquals("1", merged.items.first().quantity)
+        assertFalse(merged.items.last().included)
     }
 
     @Test

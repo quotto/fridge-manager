@@ -109,7 +109,7 @@ private fun DomainErrorCode.fieldName() = when (this) {
     DomainErrorCode.NAME_REQUIRED, DomainErrorCode.NAME_TOO_LONG, DomainErrorCode.DUPLICATE_NAME -> "name"
     DomainErrorCode.INVALID_QUANTITY, DomainErrorCode.QUANTITY_OUT_OF_RANGE -> "quantity"
     DomainErrorCode.UNKNOWN_UNIT -> "unit"
-    DomainErrorCode.BATCH_TOO_LARGE -> "name"
+    DomainErrorCode.BATCH_EMPTY, DomainErrorCode.BATCH_TOO_LARGE -> "name"
 }
 
 private fun DomainValidationException.userMessage() = when (code) {

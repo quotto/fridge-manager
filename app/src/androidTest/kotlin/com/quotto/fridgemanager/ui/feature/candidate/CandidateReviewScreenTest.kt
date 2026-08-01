@@ -8,8 +8,11 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import com.quotto.fridgemanager.domain.analysis.AnalysisApiResult
 import com.quotto.fridgemanager.domain.analysis.AnalysisCandidate
 import com.quotto.fridgemanager.domain.inventory.IngredientDraft
@@ -69,26 +72,26 @@ class CandidateReviewScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("確認内容を次へ進める").assertIsEnabled()
+        composeRule.onNodeWithText("在庫に一括反映する").assertIsEnabled()
         composeRule.onNodeWithText("候補を追加する").performClick()
-        composeRule.onNodeWithText("確認内容を次へ進める").assertIsNotEnabled()
+        composeRule.onNodeWithText("在庫に一括反映する").assertIsNotEnabled()
 
         composeRule.onAllNodesWithText("食材名")[1].performTextInput("牛乳")
         composeRule.onAllNodesWithText("推定数量")[1].performTextInput("1")
         composeRule.onNodeWithText("単位を選択（未入力）").performClick()
         composeRule.onNodeWithText("本").performClick()
-        composeRule.onNodeWithText("確認内容を次へ進める").assertIsEnabled()
+        composeRule.onNodeWithText("在庫に一括反映する").assertIsEnabled()
 
         composeRule.onAllNodesWithText("除外する")[1].performClick()
         composeRule.onNodeWithContentDescription("除外したAI候補").assertIsDisplayed()
-        composeRule.onNodeWithText("確認内容を次へ進める").assertIsEnabled()
+        composeRule.onNodeWithText("在庫に一括反映する").assertIsEnabled()
         composeRule.onNodeWithText("候補に戻す").performClick()
         composeRule.onAllNodesWithText("食材名")[1].assertIsDisplayed()
-        composeRule.onNodeWithText("確認内容を次へ進める").assertIsEnabled()
+        composeRule.onNodeWithText("在庫に一括反映する").assertIsEnabled()
     }
 
     @Test
-    fun `全候補が有効なら次へ渡すがRoomには保存しない`() {
+    fun `全候補が有効なら一括保存後に通知する`() {
         val repository = RecordingRepository()
         var handedOff: List<ReviewedCandidate> = emptyList()
         composeRule.setContent {
@@ -101,10 +104,50 @@ class CandidateReviewScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("確認内容を次へ進める").performClick()
+        composeRule.onNodeWithText("在庫に一括反映する").performClick()
         composeRule.waitUntil { handedOff.size == 1 }
-        composeRule.onNodeWithText("1件を確認しました（在庫にはまだ反映されていません）").assertIsDisplayed()
-        assertEquals(0, repository.saveCount)
+        assertEquals(1, repository.saveCount)
+    }
+
+    @Test
+    fun `重複候補は統合するまで一括反映できず数量を自動合算しない`() {
+        composeRule.setContent {
+            FridgeManagerTheme {
+                CandidateReviewScreen(
+                    result = success(
+                        listOf(
+                            AnalysisCandidate("ＮＦＫＣ", "1", "個", "VISIBLE", false),
+                            AnalysisCandidate("NFKC", "2", "個", "VISIBLE", false),
+                        ),
+                    ),
+                    presenter = CandidateReviewPresenter(RecordingRepository()),
+                    onValidated = {},
+                )
+            }
+        }
+
+        composeRule.onAllNodesWithText("この候補に統合する")[0].performClick()
+        repeat(3) { composeRule.onRoot().performTouchInput { swipeUp() } }
+        composeRule.onNodeWithText("在庫に一括反映する").assertIsEnabled()
+        composeRule.onAllNodesWithText("推定数量")[0].assertTextContains("1")
+    }
+
+    @Test
+    fun `既存在庫候補は反映方法を選ぶまで確定できず最終絶対値を表示する`() {
+        composeRule.setContent {
+            FridgeManagerTheme {
+                CandidateReviewScreen(
+                    result = success(listOf(AnalysisCandidate("豆腐", "2", "丁", "VISIBLE", false))),
+                    presenter = CandidateReviewPresenter(RecordingRepository(listOf(storedIngredient()))),
+                    onValidated = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("在庫に一括反映する").assertIsNotEnabled()
+        composeRule.onNodeWithText("増加").performClick()
+        composeRule.onNodeWithText("反映後の在庫: 3 丁").assertIsDisplayed()
+        composeRule.onNodeWithText("在庫に一括反映する").assertIsEnabled()
     }
 }
 
