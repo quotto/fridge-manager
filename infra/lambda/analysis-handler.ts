@@ -142,6 +142,7 @@ export function createAnalysisHandler(deps: { readonly provider: AnalysisProvide
     let providerCalled = false;
     const execute = async (): Promise<APIGatewayProxyStructuredResultV2> => {
     const rawAuthorizer = event.requestContext.authorizer;
+    console.log(JSON.stringify(rawAuthorizer));
     const outer = rawAuthorizer && typeof rawAuthorizer === 'object' ? rawAuthorizer as Record<string, unknown> : undefined;
     const nested = outer?.lambda;
     const auth = (nested && typeof nested === 'object' ? nested : outer) as Record<string, unknown> | undefined;
