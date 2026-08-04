@@ -38,7 +38,7 @@ function allow(principalId: string, resource: string): APIGatewayAuthorizerResul
      principalId,
      policyDocument: { Version: '2012-10-17', Statement: [{ Action: 'execute-api:Invoke', Effect: 'Allow', Resource: resource }] },
      context: { firebaseVerified: true, appCheckVerified: true, userId: principalId }
-  ));
+  }));
   return {
     principalId,
     policyDocument: { Version: '2012-10-17', Statement: [{ Action: 'execute-api:Invoke', Effect: 'Allow', Resource: resource }] },
