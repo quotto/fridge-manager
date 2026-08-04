@@ -93,7 +93,7 @@ export function createFirebaseAuthorizer(deps: {
       }
     } catch (error) {
       console.error(error.message);
-      console.error(error.stack?.split('\n');
+      console.error(error.stack?.split('\n'));
       if (error instanceof Error && error.message === 'replayed') throw new Error('Unauthorized');
       deps.auditor.record({ code: 'INVALID_APP_CHECK_TOKEN', ...(requestId ? { requestId } : {}) });
       throw new Error('Unauthorized');
