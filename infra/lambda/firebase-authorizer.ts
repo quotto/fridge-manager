@@ -21,7 +21,7 @@ export interface FirebaseTokenVerifier {
   verifyAndConsumeAppCheckToken(token: string): Promise<DecodedAppCheckToken>;
 }
 export type AuthFailureCode = 'MISSING_TOKEN' | 'MALFORMED_TOKEN' | 'INVALID_ID_TOKEN' |
-  'INVALID_APP_CHECK_TOKEN' | 'REPLAYED_APP_CHECK_TOKEN';
+  'INVALID_APP_CHECK_TOKEN' | 'GOOGLE_CREDENTIAL_FAILURE' | 'EXPIRED_APP_CHECK_TOKEN' | 'REPLAYED_APP_CHECK_TOKEN';
 export interface AuthFailureAuditor {
   record(event: { readonly code: AuthFailureCode; readonly requestId?: string }): void;
 }
@@ -43,6 +43,11 @@ function allow(principalId: string, resource: string): APIGatewayAuthorizerResul
 
 function validTime(value: number, now: number): boolean {
   return Number.isSafeInteger(value) && value > 0 && value <= now;
+}
+
+function isGoogleCredentialFailure(error: unknown): boolean {
+  return typeof error === 'object' && error !== null &&
+    'code' in error && error.code === 'app/invalid-credential';
 }
 
 export function createFirebaseAuthorizer(deps: {
@@ -84,22 +89,20 @@ export function createFirebaseAuthorizer(deps: {
       const appCheck = await deps.verifier.verifyAndConsumeAppCheckToken(appCheckToken);
       const currentTime = now();
       const validAudience = appCheck.aud.includes(`projects/${deps.projectId}`);
+      if (!Number.isSafeInteger(appCheck.exp) || appCheck.exp <= currentTime) {
+        deps.auditor.record({ code: 'EXPIRED_APP_CHECK_TOKEN', ...(requestId ? { requestId } : {}) });
+        throw new Error('expired');
+      }
       if (!appCheck.appId || !deps.allowedAppIds.has(appCheck.appId) || !validAudience ||
-          appCheck.iss !== `https://firebaseappcheck.googleapis.com/${deps.projectNumber}` || !Number.isSafeInteger(appCheck.exp) ||
-          appCheck.exp <= currentTime || !validTime(appCheck.iat, currentTime)) throw new Error('invalid claims');
+          appCheck.iss !== `https://firebaseappcheck.googleapis.com/${deps.projectNumber}` ||
+          !validTime(appCheck.iat, currentTime)) throw new Error('invalid claims');
       if (appCheck.alreadyConsumed === true) {
         deps.auditor.record({ code: 'REPLAYED_APP_CHECK_TOKEN', ...(requestId ? { requestId } : {}) });
         throw new Error('replayed');
       }
     } catch (error) {
-      if (error instanceof Error && error.message === 'replayed') throw new Error('Unauthorized');
-      deps.auditor.record({ code: 'INVALID_APP_CHECK_TOKEN', ...(requestId ? { requestId } : {}) });
-      if (error instanceof Error) {
-        console.error(error.message);
-	console.error(error.stack?.split('\n'));
-      } else {
-        console.error(String(error));
-      }
+      if (error instanceof Error && (error.message === 'expired' || error.message === 'replayed')) throw new Error('Unauthorized');
+      deps.auditor.record({ code: isGoogleCredentialFailure(error) ? 'GOOGLE_CREDENTIAL_FAILURE' : 'INVALID_APP_CHECK_TOKEN', ...(requestId ? { requestId } : {}) });
       throw new Error('Unauthorized');
     }
     return allow(idToken.uid, event.methodArn);
