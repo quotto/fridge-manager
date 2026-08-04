@@ -54,4 +54,4 @@ if (Date.now() >= exceptionExpiresAt) {
   fail('Issue #88の期限付き例外が2026-08-15に失効しました');
 }
 
-console.log(`期限付きdev/stg例外（2026-08-15失効）: ${allowedAdvisory} via ${allowedNode}`);
+console.log(`期限付きdev/stg例外（2026-08-15失効）: ${allowedAdvisories.join(',')} via ${allowedNode}`);
