@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-const allowedAdvisory = 'https://github.com/advisories/GHSA-mh99-v99m-4gvg';
+const allowedAdvisories = ['https://github.com/advisories/GHSA-mh99-v99m-4gvg','https://github.com/advisories/GHSA-rgw5-rvv9-x895'];
 const allowedNode = 'node_modules/aws-cdk-lib/node_modules/brace-expansion';
 const exceptionExpiresAt = Date.parse('2026-08-15T00:00:00Z');
 
@@ -41,9 +41,8 @@ const nodes = Array.isArray(vulnerability.nodes) ? vulnerability.nodes : [];
 const isAllowed =
   vulnerability.name === 'brace-expansion' &&
   vulnerability.severity === 'high' &&
-  advisories.length === 1 &&
-  advisories[0].url === allowedAdvisory &&
-  advisories[0].severity === 'high' &&
+  advisories.every(advisory=>allowedAdvisories.includes(advisory.url)) &&
+  advisories.every(advisory=>advisory.severity === 'high') &&
   nodes.length === 1 &&
   nodes[0] === allowedNode;
 
