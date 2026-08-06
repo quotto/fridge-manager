@@ -40,7 +40,7 @@ function event(body: unknown, overrides: Partial<APIGatewayProxyEventV2> = {}): 
   return {
     version: '2.0', routeKey: 'POST /v1/analysis', rawPath: '/v1/analysis', rawQueryString: '',
     headers: { 'content-type': 'application/json' }, requestContext: {
-      authorizer: { lambda: { firebaseVerified: true, appCheckVerified: true, userId: 'anonymous-user' } },
+      authorizer: { lambda: { firebaseVerified: 'true', appCheckVerified: 'true', userId: 'anonymous-user' } },
     } as never,
     isBase64Encoded: false, body: JSON.stringify(body), ...overrides,
   };

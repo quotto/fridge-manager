@@ -147,7 +147,7 @@ export function createAnalysisHandler(deps: { readonly provider: AnalysisProvide
     const nested = outer?.lambda;
     const auth = (nested && typeof nested === 'object' ? nested : outer) as Record<string, unknown> | undefined;
     const correlationId = event.requestContext.requestId;
-    if (auth?.firebaseVerified !== true || auth.appCheckVerified !== true || typeof auth.userId !== 'string' || auth.userId.length === 0) return response(401, correlationId, 'UNAUTHORIZED');
+    if (auth?.firebaseVerified !== 'true' || auth.appCheckVerified !== 'true' || typeof auth.userId !== 'string' || auth.userId.length === 0) return response(401, correlationId, 'UNAUTHORIZED');
     const contentType = Object.entries(event.headers).find(([key]) => key.toLowerCase() === 'content-type')?.[1];
     if (contentType?.split(';')[0]?.trim().toLowerCase() !== 'application/json') return response(415, event.requestContext.requestId, 'INVALID_REQUEST');
     let request: AnalysisRequest;
