@@ -7,7 +7,7 @@ import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { SignatureV4 } from '@smithy/signature-v4';
 import { NovaTransport } from './nova-provider';
 
-export type RetentionFailureReason = 'ACCESS_DENIED' | 'VALIDATION' | 'THROTTLED' | 'SERVICE_UNAVAILABLE' | 'CREDENTIALS' | 'NETWORK' | 'CLIENT_CONFIGURATION' | 'SDK_DESERIALIZATION' | 'SDK_DATE_DESERIALIZATION' | 'SDK_SHAPE_DESERIALIZATION' | 'SDK_BUFFER' | 'CLIENT_TYPE_ERROR' | 'CLIENT_ERROR' | 'NAME_MISSING' | 'SDK_METADATA_UNKNOWN' | 'INVALID_RESPONSE' | 'MODE_NOT_ALLOWED' | 'UNKNOWN';
+export type RetentionFailureReason = 'ACCESS_DENIED' | 'VALIDATION' | 'THROTTLED' | 'SERVICE_UNAVAILABLE' | 'CREDENTIALS' | 'NETWORK' | 'RETENTION_SIGNING' | 'RETENTION_TRANSPORT' | 'RETENTION_BODY' | 'RETENTION_JSON' | 'CLIENT_CONFIGURATION' | 'SDK_DESERIALIZATION' | 'SDK_DATE_DESERIALIZATION' | 'SDK_SHAPE_DESERIALIZATION' | 'SDK_BUFFER' | 'CLIENT_TYPE_ERROR' | 'CLIENT_ERROR' | 'NAME_MISSING' | 'SDK_METADATA_UNKNOWN' | 'INVALID_RESPONSE' | 'MODE_NOT_ALLOWED' | 'UNKNOWN';
 export type RetentionCheckResult =
   { readonly kind: 'verified'; readonly mode: string } |
   { readonly kind: 'failed'; readonly reason: RetentionFailureReason };
@@ -70,14 +70,24 @@ export class SignedBedrockRetentionClient implements CommandSender {
   public async send(command: unknown): Promise<unknown> {
     if (!(command instanceof GetAccountDataRetentionCommand)) throw new TypeError('unsupported command');
     const hostname = `bedrock.${this.region}.amazonaws.com`;
-    const request = await this.signer.sign(new HttpRequest({
-      protocol: 'https:', hostname, method: 'GET', path: '/data-retention', headers: { host: hostname },
-    }));
-    const { response } = await this.handler.handle(request);
+    let request: HttpRequest;
+    try {
+      request = await this.signer.sign(new HttpRequest({
+        protocol: 'https:', hostname, method: 'GET', path: '/data-retention', headers: { host: hostname },
+      }));
+    } catch { throw Object.assign(new Error('retention signing failed'), { name: 'RetentionSigningError' }); }
+    let response: { statusCode: number; body?: unknown };
+    try { ({ response } = await this.handler.handle(request)); }
+    catch { throw Object.assign(new Error('retention transport failed'), { name: 'RetentionTransportError' }); }
     if (response.statusCode !== 200) {
       throw Object.assign(new Error('Bedrock control-plane request failed'), { $metadata: { httpStatusCode: response.statusCode } });
     }
-    const parsed: unknown = JSON.parse(await readBody(response.body));
+    let body: string;
+    try { body = await readBody(response.body); }
+    catch { throw Object.assign(new Error('retention body failed'), { name: 'RetentionBodyError' }); }
+    let parsed: unknown;
+    try { parsed = JSON.parse(body); }
+    catch { throw Object.assign(new Error('retention JSON failed'), { name: 'RetentionJsonError' }); }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
     const mode = (parsed as { mode?: unknown }).mode;
     return typeof mode === 'string' ? { mode } : {};
@@ -100,6 +110,10 @@ function retentionFailureReason(error: unknown): RetentionFailureReason {
       ? candidate.name
       : '';
     if (['AccessDeniedException', 'AccessDenied', 'UnauthorizedException', 'UnrecognizedClientException'].includes(name)) return 'ACCESS_DENIED';
+    if (name === 'RetentionSigningError') return 'RETENTION_SIGNING';
+    if (name === 'RetentionTransportError') return 'RETENTION_TRANSPORT';
+    if (name === 'RetentionBodyError') return 'RETENTION_BODY';
+    if (name === 'RetentionJsonError') return 'RETENTION_JSON';
     if (name === 'CredentialsProviderError') return 'CREDENTIALS';
     if (['TimeoutError', 'NetworkingError', 'EndpointError'].includes(name)) return 'NETWORK';
     const code = candidate?.code;
