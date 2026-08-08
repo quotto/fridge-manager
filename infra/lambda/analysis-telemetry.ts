@@ -17,11 +17,13 @@ export interface ProviderUsageTelemetryEvent {
   readonly outputTokens: number;
   readonly attempts: number;
   readonly requestId?: string;
+  readonly failureReason?: string;
 }
 
 const SAFE_ID = /^[A-Za-z0-9-]{1,64}$/;
 const SAFE_CODE = /^[A-Z_]{1,40}$/;
 const ALLOWED_MODEL_IDS = new Set([NOVA_MODEL_ID]);
+const PROVIDER_FAILURE_REASONS = new Set(['ACCESS_DENIED', 'VALIDATION', 'NOT_FOUND', 'THROTTLED', 'SERVICE_UNAVAILABLE', 'UNKNOWN']);
 const MAX_TOKEN_COUNT = 10_000_000;
 const safeCount = (value: number, maximum = MAX_TOKEN_COUNT): boolean =>
   Number.isSafeInteger(value) && value >= 0 && value <= maximum;
@@ -49,6 +51,7 @@ export class EmfAnalysisTelemetry implements AnalysisTelemetry {
         !safeCount(event.inputTokens) || !safeCount(event.outputTokens) ||
         !safeCount(event.attempts, 2) || event.attempts < 1) return;
     const safeRequestId = event.requestId && SAFE_ID.test(event.requestId) ? event.requestId : undefined;
+    const safeFailureReason = event.failureReason && PROVIDER_FAILURE_REASONS.has(event.failureReason) ? event.failureReason : undefined;
     this.write(JSON.stringify({
       _aws: {
         Timestamp: Date.now(),
@@ -67,6 +70,7 @@ export class EmfAnalysisTelemetry implements AnalysisTelemetry {
       InputTokens: event.inputTokens,
       OutputTokens: event.outputTokens,
       ProviderCalls: event.attempts,
+      ...(safeFailureReason ? { ProviderFailureReason: safeFailureReason } : {}),
       ...(safeRequestId ? { requestId: safeRequestId } : {}),
     }));
   }

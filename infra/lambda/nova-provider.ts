@@ -25,7 +25,11 @@ export interface NovaProviderUsage {
   readonly outputTokens: number;
   readonly attempts: number;
   readonly requestId: string;
+  readonly failureReason?: NovaProviderFailureReason;
 }
+
+export type NovaProviderFailureReason = 'ACCESS_DENIED' | 'VALIDATION' | 'NOT_FOUND' |
+  'THROTTLED' | 'SERVICE_UNAVAILABLE' | 'UNKNOWN';
 
 const candidateSchema = {
   type: 'object', additionalProperties: false,
@@ -99,6 +103,18 @@ function safeTokenCount(value: unknown): number {
     : 0;
 }
 
+function providerFailureReason(error: unknown): NovaProviderFailureReason {
+  const name = error && typeof error === 'object' && 'name' in error && typeof error.name === 'string'
+    ? error.name
+    : '';
+  if (name === 'AccessDeniedException') return 'ACCESS_DENIED';
+  if (name === 'ValidationException') return 'VALIDATION';
+  if (name === 'ResourceNotFoundException') return 'NOT_FOUND';
+  if (name === 'ThrottlingException') return 'THROTTLED';
+  if (name === 'ServiceUnavailableException' || name === 'InternalServerException') return 'SERVICE_UNAVAILABLE';
+  return 'UNKNOWN';
+}
+
 /** Geo・保持条件をfail-closed検証し、schema不正時だけ一度再試行する。 */
 export function createNovaProvider(
   config: NovaProviderConfig,
@@ -111,13 +127,17 @@ export function createNovaProvider(
       let attempts = 0;
       let inputTokens = 0;
       let outputTokens = 0;
+      let failureReason: NovaProviderFailureReason | undefined;
       try {
         for (let attempt = 0; attempt < 2; attempt += 1) {
           const input = buildConverseInput(config, request, attempt === 1);
           let raw: unknown;
           attempts += 1;
           try { raw = await transport.converse(input); }
-          catch { throw new AnalysisError('PROVIDER_UNAVAILABLE', 503); }
+          catch (error) {
+            failureReason = providerFailureReason(error);
+            throw new AnalysisError('PROVIDER_UNAVAILABLE', 503);
+          }
           const usage = raw && typeof raw === 'object' ? (raw as { usage?: unknown }).usage : undefined;
           if (usage && typeof usage === 'object' && !Array.isArray(usage)) {
             inputTokens += safeTokenCount((usage as { inputTokens?: unknown }).inputTokens);
@@ -128,7 +148,7 @@ export function createNovaProvider(
         }
         throw new AnalysisError('UNANALYZABLE_IMAGE', 422);
       } finally {
-        try { recordUsage({ modelId: config.modelId, inputTokens, outputTokens, attempts, requestId: request.requestId }); }
+        try { recordUsage({ modelId: config.modelId, inputTokens, outputTokens, attempts, requestId: request.requestId, ...(failureReason ? { failureReason } : {}) }); }
         catch { /* 観測障害でprovider結果を失敗させない。 */ }
       }
     },
