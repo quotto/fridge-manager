@@ -1,7 +1,13 @@
 import { GetAccountDataRetentionCommand } from '@aws-sdk/client-bedrock';
 import { ConverseCommand, type ConverseCommandInput } from '@aws-sdk/client-bedrock-runtime';
+import { Readable } from 'node:stream';
+import { SignatureV4 } from '@smithy/signature-v4';
+import { HttpRequest } from '@smithy/core/protocols';
 import {
   BedrockNovaTransport,
+  NodeSha256,
+  RETENTION_HTTP_TIMEOUTS,
+  SignedBedrockRetentionClient,
   loadAccountDataRetentionMode,
 } from '../lambda/nova-bedrock-adapter';
 
@@ -25,6 +31,55 @@ describe('Bedrock Nova SDK adapter', () => {
 });
 
 describe('Bedrock account data retention起動検証', () => {
+  it('許可リージョン以外のcontrol-plane endpointを構築しない', () => {
+    expect(() => new SignedBedrockRetentionClient('us-east-1')).toThrow(TypeError);
+  });
+
+  it('SigV4署名したcontrol-plane GETからmodeだけを返す', async () => {
+    const signer = new SignatureV4({
+      credentials: { accessKeyId: 'AKIDEXAMPLE', secretAccessKey: 'test-secret-key', sessionToken: 'test-session-token' },
+      region: 'ap-northeast-1', service: 'bedrock', sha256: NodeSha256,
+    });
+    const requestSigner = { sign: (request: HttpRequest) => signer.sign(request) as Promise<HttpRequest> };
+    const handler = { handle: jest.fn().mockResolvedValue({
+      response: { statusCode: 200, body: Readable.from([JSON.stringify({ mode: 'none', updatedAt: 'unsupported-date' })]) },
+    }) };
+    const client = new SignedBedrockRetentionClient('ap-northeast-1', requestSigner, handler);
+
+    await expect(client.send(new GetAccountDataRetentionCommand({}))).resolves.toEqual({ mode: 'none' });
+    const sent = handler.handle.mock.calls[0]?.[0];
+    expect(sent).toMatchObject({ protocol: 'https:', hostname: 'bedrock.ap-northeast-1.amazonaws.com', method: 'GET', path: '/data-retention' });
+    expect(sent?.headers.authorization).toMatch(/^AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE\//);
+    expect(sent?.headers['x-amz-date']).toMatch(/^\d{8}T\d{6}Z$/);
+    expect(sent?.headers['x-amz-security-token']).toBe('test-session-token');
+  });
+
+  it('control-plane通信の全timeoutを明示している', () => {
+    const handler = { handle: jest.fn() };
+    let observed: typeof RETENTION_HTTP_TIMEOUTS | undefined;
+    const factory = jest.fn((options: typeof RETENTION_HTTP_TIMEOUTS) => { observed = options; return handler; });
+    const signer = { sign: jest.fn() };
+    new SignedBedrockRetentionClient('ap-northeast-1', signer, undefined, factory);
+    expect(factory).toHaveBeenCalledWith({
+      connectionTimeout: 3_000, requestTimeout: 5_000, socketTimeout: 5_000, throwOnRequestTimeout: true,
+    });
+    expect(RETENTION_HTTP_TIMEOUTS).toEqual(observed);
+  });
+
+  it('control-planeの非200をstatusだけ持つ固定分類可能な例外にする', async () => {
+    const signer = { sign: jest.fn(async (request) => request) };
+    const handler = { handle: jest.fn().mockResolvedValue({ response: { statusCode: 403, body: Readable.from(['secret']) } }) };
+    const client = new SignedBedrockRetentionClient('ap-northeast-1', signer, handler);
+    await expect(loadAccountDataRetentionMode(client)).resolves.toEqual({ kind: 'failed', reason: 'ACCESS_DENIED' });
+  });
+
+  it('control-plane応答が上限を超える場合はfail closedにする', async () => {
+    const signer = { sign: jest.fn(async (request) => request) };
+    const handler = { handle: jest.fn().mockResolvedValue({ response: { statusCode: 200, body: Readable.from(['x'.repeat(16_385)]) } }) };
+    const client = new SignedBedrockRetentionClient('ap-northeast-1', signer, handler);
+    await expect(loadAccountDataRetentionMode(client)).resolves.toEqual({ kind: 'failed', reason: 'CLIENT_TYPE_ERROR' });
+  });
+
   it('GetAccountDataRetentionCommandを送り現在のmodeを返す', async () => {
     const controlClient = { send: jest.fn().mockResolvedValue({ mode: 'none' }) };
 

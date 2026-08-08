@@ -1,17 +1,16 @@
 import type { APIGatewayProxyEvent } from 'aws-lambda';
-import { BedrockClient } from '@aws-sdk/client-bedrock';
 import { BedrockRuntimeClient } from '@aws-sdk/client-bedrock-runtime';
 import { createAnalysisHandler } from './analysis-handler';
 import { DynamoIdempotencyStore } from './dynamo-idempotency-store';
 import { DynamoQuotaStore } from './dynamo-quota-store';
 import { EmfAnalysisTelemetry } from './analysis-telemetry';
-import { BedrockNovaTransport, loadAccountDataRetentionMode } from './nova-bedrock-adapter';
+import { BedrockNovaTransport, SignedBedrockRetentionClient, loadAccountDataRetentionMode } from './nova-bedrock-adapter';
 import { createProductionProvider } from './production-provider';
 
 const bedrockRegion = process.env.BEDROCK_REGION ?? '';
 const modelId = process.env.BEDROCK_MODEL_ID ?? '';
 const allowedModes = (process.env.BEDROCK_MODEL_ALLOWED_MODES ?? '').split(',').filter(Boolean);
-const retentionClient = new BedrockClient({ region: bedrockRegion || 'ap-northeast-1' });
+const retentionClient = new SignedBedrockRetentionClient(bedrockRegion || 'ap-northeast-1');
 // 初期化フェーズで検証を開始し、失敗は未処理rejectionにせずproviderをfail closedにする。
 const retentionCheckPromise = loadAccountDataRetentionMode(retentionClient);
 const transport = new BedrockNovaTransport(new BedrockRuntimeClient({ region: bedrockRegion || 'ap-northeast-1' }));

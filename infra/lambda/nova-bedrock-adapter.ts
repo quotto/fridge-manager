@@ -1,5 +1,10 @@
 import { GetAccountDataRetentionCommand } from '@aws-sdk/client-bedrock';
+import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { ConverseCommand, ConverseCommandInput } from '@aws-sdk/client-bedrock-runtime';
+import { createHash, createHmac, Hash, Hmac } from 'node:crypto';
+import { HttpRequest } from '@smithy/core/protocols';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
+import { SignatureV4 } from '@smithy/signature-v4';
 import { NovaTransport } from './nova-provider';
 
 export type RetentionFailureReason = 'ACCESS_DENIED' | 'VALIDATION' | 'THROTTLED' | 'SERVICE_UNAVAILABLE' | 'CREDENTIALS' | 'NETWORK' | 'CLIENT_CONFIGURATION' | 'SDK_DESERIALIZATION' | 'SDK_DATE_DESERIALIZATION' | 'SDK_SHAPE_DESERIALIZATION' | 'SDK_BUFFER' | 'CLIENT_TYPE_ERROR' | 'CLIENT_ERROR' | 'NAME_MISSING' | 'SDK_METADATA_UNKNOWN' | 'INVALID_RESPONSE' | 'MODE_NOT_ALLOWED' | 'UNKNOWN';
@@ -9,6 +14,74 @@ export type RetentionCheckResult =
 
 interface CommandSender {
   send(command: unknown): Promise<unknown>;
+}
+
+interface RequestSigner { sign(request: HttpRequest): Promise<HttpRequest>; }
+interface RequestHandler { handle(request: HttpRequest): Promise<{ response: { statusCode: number; body?: unknown } }>; }
+type RequestHandlerFactory = (options: typeof RETENTION_HTTP_TIMEOUTS) => RequestHandler;
+
+export class NodeSha256 {
+  private readonly hash: Hash | Hmac;
+  public constructor(secret?: string | ArrayBuffer | ArrayBufferView) {
+    this.hash = secret === undefined ? createHash('sha256') : createHmac('sha256', Buffer.from(secret as never));
+  }
+  public update(data: Uint8Array | string): void { this.hash.update(data); }
+  public async digest(): Promise<Uint8Array> { return this.hash.digest(); }
+}
+
+export const RETENTION_HTTP_TIMEOUTS = {
+  connectionTimeout: 3_000,
+  requestTimeout: 5_000,
+  socketTimeout: 5_000,
+  throwOnRequestTimeout: true,
+} as const;
+
+async function readBody(body: unknown): Promise<string> {
+  if (!body || typeof body !== 'object' || !(Symbol.asyncIterator in body)) throw new TypeError('response body is not async iterable');
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of body as AsyncIterable<Uint8Array | string>) {
+    const buffer = Buffer.from(chunk);
+    total += buffer.byteLength;
+    if (total > 16_384) throw new TypeError('response body exceeds limit');
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+/** SDKの日時デシリアライズを避け、署名済み応答から保持modeだけを厳格に読む。 */
+export class SignedBedrockRetentionClient implements CommandSender {
+  private readonly signer: RequestSigner;
+  private readonly handler: RequestHandler;
+  public constructor(
+    private readonly region: string,
+    signer?: RequestSigner,
+    handler?: RequestHandler,
+    handlerFactory: RequestHandlerFactory = (options) => new NodeHttpHandler(options),
+  ) {
+    if (region !== 'ap-northeast-1') throw new TypeError('unsupported Bedrock retention region');
+    const signature = signer ?? new SignatureV4({
+      credentials: defaultProvider(), region, service: 'bedrock', sha256: NodeSha256,
+    });
+    this.signer = { sign: (request) => signature.sign(request) as Promise<HttpRequest> };
+    this.handler = handler ?? handlerFactory(RETENTION_HTTP_TIMEOUTS);
+  }
+
+  public async send(command: unknown): Promise<unknown> {
+    if (!(command instanceof GetAccountDataRetentionCommand)) throw new TypeError('unsupported command');
+    const hostname = `bedrock.${this.region}.amazonaws.com`;
+    const request = await this.signer.sign(new HttpRequest({
+      protocol: 'https:', hostname, method: 'GET', path: '/data-retention', headers: { host: hostname },
+    }));
+    const { response } = await this.handler.handle(request);
+    if (response.statusCode !== 200) {
+      throw Object.assign(new Error('Bedrock control-plane request failed'), { $metadata: { httpStatusCode: response.statusCode } });
+    }
+    const parsed: unknown = JSON.parse(await readBody(response.body));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const mode = (parsed as { mode?: unknown }).mode;
+    return typeof mode === 'string' ? { mode } : {};
+  }
 }
 
 /** AWS SDKを狭いtransport境界に閉じ込め、providerを単体テスト可能にする。 */
@@ -42,8 +115,6 @@ function retentionFailureReason(error: unknown): RetentionFailureReason {
       if (message.startsWith('Expected ')) return 'SDK_SHAPE_DESERIALIZATION';
       if (message.includes('"input" argument') || message.includes('base64')) return 'SDK_BUFFER';
     }
-    if (name === 'TypeError') return 'CLIENT_TYPE_ERROR';
-    if (name === 'Error') return 'CLIENT_ERROR';
     if (name === 'ValidationException') return 'VALIDATION';
     if (name === 'ThrottlingException') return 'THROTTLED';
     if (name === 'ServiceUnavailableException' || name === 'InternalServerException') return 'SERVICE_UNAVAILABLE';
@@ -56,6 +127,8 @@ function retentionFailureReason(error: unknown): RetentionFailureReason {
     if (status === 429) return 'THROTTLED';
     if (typeof status === 'number' && status >= 500 && status <= 599) return 'SERVICE_UNAVAILABLE';
     if (metadata) return 'SDK_METADATA_UNKNOWN';
+    if (name === 'TypeError') return 'CLIENT_TYPE_ERROR';
+    if (name === 'Error') return 'CLIENT_ERROR';
     if (!name) return 'NAME_MISSING';
   } catch { return 'UNKNOWN'; }
   return 'UNKNOWN';
