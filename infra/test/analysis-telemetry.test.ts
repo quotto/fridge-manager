@@ -54,6 +54,24 @@ describe('解析telemetry allowlist', () => {
     expect(JSON.stringify(value._aws)).not.toContain('requestId');
   });
 
+  it('provider例外は許可済み固定理由だけを出力する', () => {
+    const lines: string[] = [];
+    const telemetry = new EmfAnalysisTelemetry('FridgeManager/Analysis', 'dev', (line) => lines.push(line));
+    telemetry.recordProviderUsage({
+      modelId: 'jp.amazon.nova-2-lite-v1:0', inputTokens: 0, outputTokens: 0, attempts: 1,
+      requestId: '018f47a0-90c0-7d54-b92d-4285f7fb3312', failureReason: 'ACCESS_DENIED',
+    });
+    expect(JSON.parse(lines[0] ?? '{}')).toMatchObject({ ProviderFailureReason: 'ACCESS_DENIED' });
+
+    const rejected: string[] = [];
+    new EmfAnalysisTelemetry('FridgeManager/Analysis', 'dev', (line) => rejected.push(line)).recordProviderUsage({
+      modelId: 'jp.amazon.nova-2-lite-v1:0', inputTokens: 0, outputTokens: 0, attempts: 1,
+      failureReason: 'secret provider token',
+    });
+    expect(JSON.parse(rejected[0] ?? '{}')).not.toHaveProperty('ProviderFailureReason');
+    expect(rejected[0]).not.toContain('secret provider token');
+  });
+
   it.each([
     ['未許可モデル', { modelId: 'global.amazon.nova-2-lite-v1:0', inputTokens: 1, outputTokens: 1, attempts: 1 }],
     ['負数token', { modelId: 'jp.amazon.nova-2-lite-v1:0', inputTokens: -1, outputTokens: 1, attempts: 1 }],

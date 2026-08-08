@@ -214,9 +214,16 @@ describe('Nova Converse入出力契約', () => {
     });
   });
 
-  it('Bedrock通信障害でもtoken本文や例外を渡さず試行回数だけ記録する', async () => {
+  it.each([
+    ['AccessDeniedException', 'ACCESS_DENIED'],
+    ['ValidationException', 'VALIDATION'],
+    ['ResourceNotFoundException', 'NOT_FOUND'],
+    ['ThrottlingException', 'THROTTLED'],
+    ['ServiceUnavailableException', 'SERVICE_UNAVAILABLE'],
+    ['unexpected-secret-error', 'UNKNOWN'],
+  ])('Bedrock %sでも例外本文を渡さず固定理由だけ記録する', async (name, failureReason) => {
     const bedrock = transport();
-    bedrock.converse.mockRejectedValue(new Error('secret provider token'));
+    bedrock.converse.mockRejectedValue(Object.assign(new Error('secret provider token'), { name }));
     const recordUsage = jest.fn();
     const provider = createNovaProvider(validConfig, bedrock, recordUsage);
 
@@ -228,6 +235,7 @@ describe('Nova Converse入出力契約', () => {
       outputTokens: 0,
       attempts: 1,
       requestId: request.requestId,
+      failureReason,
     });
     expect(JSON.stringify(recordUsage.mock.calls)).not.toContain('secret provider token');
   });
