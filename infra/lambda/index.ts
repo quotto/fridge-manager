@@ -1,12 +1,12 @@
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 import { BedrockClient } from '@aws-sdk/client-bedrock';
 import { BedrockRuntimeClient } from '@aws-sdk/client-bedrock-runtime';
-import { AnalysisProvider, createAnalysisHandler } from './analysis-handler';
+import { createAnalysisHandler } from './analysis-handler';
 import { DynamoIdempotencyStore } from './dynamo-idempotency-store';
 import { DynamoQuotaStore } from './dynamo-quota-store';
 import { EmfAnalysisTelemetry } from './analysis-telemetry';
 import { BedrockNovaTransport, loadAccountDataRetentionMode } from './nova-bedrock-adapter';
-import { createNovaProvider } from './nova-provider';
+import { createProductionProvider } from './production-provider';
 
 const bedrockRegion = process.env.BEDROCK_REGION ?? '';
 const modelId = process.env.BEDROCK_MODEL_ID ?? '';
@@ -16,16 +16,12 @@ const retentionClient = new BedrockClient({ region: bedrockRegion || 'ap-northea
 const retentionModePromise = loadAccountDataRetentionMode(retentionClient).catch(() => undefined);
 const transport = new BedrockNovaTransport(new BedrockRuntimeClient({ region: bedrockRegion || 'ap-northeast-1' }));
 const telemetry = new EmfAnalysisTelemetry('FridgeManager/Analysis', process.env.ENVIRONMENT ?? 'unknown');
-const provider: AnalysisProvider = {
-  async analyze(request) {
-    const dataRetentionMode = await retentionModePromise;
-    return createNovaProvider(
-      { region: bedrockRegion, modelId, allowedModes, dataRetentionMode: dataRetentionMode ?? '' },
-      transport,
-      (usage) => telemetry.recordProviderUsage(usage),
-    ).analyze(request);
-  },
-};
+const provider = createProductionProvider(
+  { region: bedrockRegion, modelId, allowedModes },
+  retentionModePromise,
+  transport,
+  (usage) => telemetry.recordProviderUsage(usage),
+);
 const tableName = process.env.IDEMPOTENCY_TABLE_NAME;
 const controlTableName = process.env.CONTROL_TABLE_NAME;
 if (!tableName || !controlTableName) throw new Error('DynamoDB table environment is required');
