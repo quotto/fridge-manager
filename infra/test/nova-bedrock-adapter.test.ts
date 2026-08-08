@@ -75,6 +75,16 @@ describe('Bedrock account data retention起動検証', () => {
   });
 
   it.each([
+    [{ name: 'Error', code: 'ENOTFOUND', message: 'secret host' }, 'NETWORK'],
+    [{ name: 'TypeError', message: 'fetch failed: secret endpoint' }, 'NETWORK'],
+    [{ name: 'TypeError', message: 'Cannot read properties of undefined (secret)' }, 'SDK_DESERIALIZATION'],
+    [{ name: 'TypeError', message: 'Invalid URL: secret endpoint' }, 'CLIENT_CONFIGURATION'],
+  ])('runtime例外を本文を出さず固定カテゴリへ分類する', async (error, reason) => {
+    const controlClient = { send: jest.fn().mockRejectedValue(error) };
+    await expect(loadAccountDataRetentionMode(controlClient)).resolves.toEqual({ kind: 'failed', reason });
+  });
+
+  it.each([
     [403, 'ACCESS_DENIED'],
     [400, 'VALIDATION'],
     [429, 'THROTTLED'],
