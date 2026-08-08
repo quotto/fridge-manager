@@ -2,7 +2,7 @@ import { GetAccountDataRetentionCommand } from '@aws-sdk/client-bedrock';
 import { ConverseCommand, ConverseCommandInput } from '@aws-sdk/client-bedrock-runtime';
 import { NovaTransport } from './nova-provider';
 
-export type RetentionFailureReason = 'ACCESS_DENIED' | 'THROTTLED' | 'SERVICE_UNAVAILABLE' | 'INVALID_RESPONSE' | 'MODE_NOT_ALLOWED' | 'UNKNOWN';
+export type RetentionFailureReason = 'ACCESS_DENIED' | 'VALIDATION' | 'THROTTLED' | 'SERVICE_UNAVAILABLE' | 'INVALID_RESPONSE' | 'MODE_NOT_ALLOWED' | 'UNKNOWN';
 export type RetentionCheckResult =
   { readonly kind: 'verified'; readonly mode: string } |
   { readonly kind: 'failed'; readonly reason: RetentionFailureReason };
@@ -22,12 +22,22 @@ export class BedrockNovaTransport implements NovaTransport {
 
 function retentionFailureReason(error: unknown): RetentionFailureReason {
   try {
-    const name = error && typeof error === 'object' && 'name' in error && typeof error.name === 'string'
-      ? error.name
+    const candidate = error && typeof error === 'object' ? error as Record<string, unknown> : undefined;
+    const name = candidate && 'name' in candidate && typeof candidate.name === 'string'
+      ? candidate.name
       : '';
     if (name === 'AccessDeniedException') return 'ACCESS_DENIED';
+    if (name === 'ValidationException') return 'VALIDATION';
     if (name === 'ThrottlingException') return 'THROTTLED';
     if (name === 'ServiceUnavailableException' || name === 'InternalServerException') return 'SERVICE_UNAVAILABLE';
+    const metadata = candidate && '$metadata' in candidate && candidate.$metadata && typeof candidate.$metadata === 'object'
+      ? candidate.$metadata as { httpStatusCode?: unknown }
+      : undefined;
+    const status = metadata?.httpStatusCode;
+    if (status === 401 || status === 403) return 'ACCESS_DENIED';
+    if (status === 400) return 'VALIDATION';
+    if (status === 429) return 'THROTTLED';
+    if (typeof status === 'number' && status >= 500 && status <= 599) return 'SERVICE_UNAVAILABLE';
   } catch { return 'UNKNOWN'; }
   return 'UNKNOWN';
 }
