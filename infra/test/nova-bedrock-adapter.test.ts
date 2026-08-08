@@ -77,7 +77,16 @@ describe('Bedrock account data retention起動検証', () => {
     const signer = { sign: jest.fn(async (request) => request) };
     const handler = { handle: jest.fn().mockResolvedValue({ response: { statusCode: 200, body: Readable.from(['x'.repeat(16_385)]) } }) };
     const client = new SignedBedrockRetentionClient('ap-northeast-1', signer, handler);
-    await expect(loadAccountDataRetentionMode(client)).resolves.toEqual({ kind: 'failed', reason: 'CLIENT_TYPE_ERROR' });
+    await expect(loadAccountDataRetentionMode(client)).resolves.toEqual({ kind: 'failed', reason: 'RETENTION_BODY' });
+  });
+
+  it.each([
+    ['署名', { sign: jest.fn().mockRejectedValue(new Error('secret')) }, { handle: jest.fn() }, 'RETENTION_SIGNING'],
+    ['通信', { sign: jest.fn(async (request) => request) }, { handle: jest.fn().mockRejectedValue(new Error('secret')) }, 'RETENTION_TRANSPORT'],
+    ['JSON', { sign: jest.fn(async (request) => request) }, { handle: jest.fn().mockResolvedValue({ response: { statusCode: 200, body: Readable.from(['not-json']) } }) }, 'RETENTION_JSON'],
+  ])('%s段階の失敗を固定分類する', async (_name, signer, handler, reason) => {
+    const client = new SignedBedrockRetentionClient('ap-northeast-1', signer, handler);
+    await expect(loadAccountDataRetentionMode(client)).resolves.toEqual({ kind: 'failed', reason });
   });
 
   it('GetAccountDataRetentionCommandを送り現在のmodeを返す', async () => {
