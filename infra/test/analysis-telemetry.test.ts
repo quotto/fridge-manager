@@ -72,6 +72,23 @@ describe('解析telemetry allowlist', () => {
     expect(rejected[0]).not.toContain('secret provider token');
   });
 
+  it('保持モード起動検証の失敗はmetricを増やさず固定理由だけを出力する', () => {
+    const lines: string[] = [];
+    const telemetry = new EmfAnalysisTelemetry('FridgeManager/Analysis', 'stg', (line) => lines.push(line));
+    telemetry.recordProviderPreflightFailure({ requestId: '018f47a0-90c0-7d54-b92d-4285f7fb3312', reason: 'ACCESS_DENIED' });
+    telemetry.recordProviderPreflightFailure({ requestId: 'bad\nsecret', reason: 'secret error message' } as never);
+
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0] ?? '{}')).toEqual({
+      Environment: 'stg',
+      ProviderPreflightStage: 'DATA_RETENTION',
+      ProviderPreflightFailureReason: 'ACCESS_DENIED',
+      requestId: '018f47a0-90c0-7d54-b92d-4285f7fb3312',
+    });
+    expect(lines[0]).not.toContain('_aws');
+    expect(lines.join('')).not.toContain('secret error message');
+  });
+
   it.each([
     ['未許可モデル', { modelId: 'global.amazon.nova-2-lite-v1:0', inputTokens: 1, outputTokens: 1, attempts: 1 }],
     ['負数token', { modelId: 'jp.amazon.nova-2-lite-v1:0', inputTokens: -1, outputTokens: 1, attempts: 1 }],

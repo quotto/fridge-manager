@@ -2,6 +2,7 @@ import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 import { encode } from 'jpeg-js';
 import {
   AnalysisError,
+  ProviderPreflightError,
   AnalysisProvider,
   AnalysisProviderResult,
   IdempotencyClaim,
@@ -239,6 +240,14 @@ describe('AI解析Lambda', () => {
     const response = await createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore: reserved })(event(validRequest));
     expect(response.statusCode).toBe(503);
     expect(reserved.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('保持確認失敗を実provider呼び出しとして計上しない', async () => {
+    const record = jest.fn();
+    const provider: AnalysisProvider = { analyze: jest.fn().mockRejectedValue(new ProviderPreflightError()) };
+    const response = await createAnalysisHandler({ provider, idempotencyStore: new MemoryStore(), quotaStore, telemetry: { record } })(event(validRequest));
+    expect(response.statusCode).toBe(503);
+    expect(record).toHaveBeenCalledWith(expect.objectContaining({ providerCalled: false }));
   });
 
   it('有効なAI結果後のquota完了障害では返却せず再送もproviderへ進めない', async () => {
