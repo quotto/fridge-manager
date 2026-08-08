@@ -26,7 +26,7 @@ function retentionFailureReason(error: unknown): RetentionFailureReason {
     const name = candidate && 'name' in candidate && typeof candidate.name === 'string'
       ? candidate.name
       : '';
-    if (name === 'AccessDeniedException') return 'ACCESS_DENIED';
+    if (['AccessDeniedException', 'AccessDenied', 'UnauthorizedException', 'UnrecognizedClientException'].includes(name)) return 'ACCESS_DENIED';
     if (name === 'ValidationException') return 'VALIDATION';
     if (name === 'ThrottlingException') return 'THROTTLED';
     if (name === 'ServiceUnavailableException' || name === 'InternalServerException') return 'SERVICE_UNAVAILABLE';

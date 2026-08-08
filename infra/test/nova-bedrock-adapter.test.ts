@@ -43,6 +43,9 @@ describe('Bedrock account data retention起動検証', () => {
 
   it.each([
     ['AccessDeniedException', 'ACCESS_DENIED'],
+    ['AccessDenied', 'ACCESS_DENIED'],
+    ['UnauthorizedException', 'ACCESS_DENIED'],
+    ['UnrecognizedClientException', 'ACCESS_DENIED'],
     ['ThrottlingException', 'THROTTLED'],
     ['ServiceUnavailableException', 'SERVICE_UNAVAILABLE'],
     ['UnexpectedSdkException', 'UNKNOWN'],
