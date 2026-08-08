@@ -2,7 +2,7 @@ import { GetAccountDataRetentionCommand } from '@aws-sdk/client-bedrock';
 import { ConverseCommand, ConverseCommandInput } from '@aws-sdk/client-bedrock-runtime';
 import { NovaTransport } from './nova-provider';
 
-export type RetentionFailureReason = 'ACCESS_DENIED' | 'VALIDATION' | 'THROTTLED' | 'SERVICE_UNAVAILABLE' | 'CREDENTIALS' | 'NETWORK' | 'CLIENT_RUNTIME' | 'NAME_MISSING' | 'SDK_METADATA_UNKNOWN' | 'INVALID_RESPONSE' | 'MODE_NOT_ALLOWED' | 'UNKNOWN';
+export type RetentionFailureReason = 'ACCESS_DENIED' | 'VALIDATION' | 'THROTTLED' | 'SERVICE_UNAVAILABLE' | 'CREDENTIALS' | 'NETWORK' | 'CLIENT_CONFIGURATION' | 'SDK_DESERIALIZATION' | 'CLIENT_RUNTIME' | 'NAME_MISSING' | 'SDK_METADATA_UNKNOWN' | 'INVALID_RESPONSE' | 'MODE_NOT_ALLOWED' | 'UNKNOWN';
 export type RetentionCheckResult =
   { readonly kind: 'verified'; readonly mode: string } |
   { readonly kind: 'failed'; readonly reason: RetentionFailureReason };
@@ -29,6 +29,14 @@ function retentionFailureReason(error: unknown): RetentionFailureReason {
     if (['AccessDeniedException', 'AccessDenied', 'UnauthorizedException', 'UnrecognizedClientException'].includes(name)) return 'ACCESS_DENIED';
     if (name === 'CredentialsProviderError') return 'CREDENTIALS';
     if (['TimeoutError', 'NetworkingError', 'EndpointError'].includes(name)) return 'NETWORK';
+    const code = candidate?.code;
+    if (typeof code === 'string' && ['ENOTFOUND', 'EAI_AGAIN', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT'].includes(code)) return 'NETWORK';
+    const message = candidate?.message;
+    if (typeof message === 'string') {
+      if (message.includes('fetch failed')) return 'NETWORK';
+      if (message.includes('Invalid URL')) return 'CLIENT_CONFIGURATION';
+      if (message.includes('Cannot read properties of undefined') || message.includes('Cannot read property')) return 'SDK_DESERIALIZATION';
+    }
     if (name === 'TypeError' || name === 'Error') return 'CLIENT_RUNTIME';
     if (name === 'ValidationException') return 'VALIDATION';
     if (name === 'ThrottlingException') return 'THROTTLED';
