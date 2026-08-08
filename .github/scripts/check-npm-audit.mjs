@@ -20,19 +20,18 @@ if (report?.auditReportVersion !== 2 || typeof report?.vulnerabilities !== 'obje
   fail('npm audit v2形式ではありません');
 }
 
-const vulnerabilities = Object.values(report.vulnerabilities).filter(
-  (vulnerability) => vulnerability?.severity === 'high' || vulnerability?.severity === 'critical',
+const vulnerabilityEntries = Object.entries(report.vulnerabilities).filter(
+  ([, vulnerability]) => vulnerability?.severity === 'high' || vulnerability?.severity === 'critical',
 );
+const vulnerabilities = vulnerabilityEntries.map(([, vulnerability]) => vulnerability);
+const highByName = new Map(vulnerabilityEntries);
 if (vulnerabilities.length === 0) {
   console.log('npm audit: High/Critical脆弱性なし');
   process.exit(0);
 }
 
-if (vulnerabilities.length !== 1) {
-  fail(`期限付き例外以外の脆弱性を検出しました（${vulnerabilities.length}件）`);
-}
-
-const vulnerability = vulnerabilities[0];
+const vulnerability = highByName.get('brace-expansion');
+if (!vulnerability) fail('期限付き例外のroot advisoryがありません');
 const advisories = Array.isArray(vulnerability.via)
   ? vulnerability.via.filter((entry) => typeof entry === 'object' && entry !== null)
   : [];
@@ -41,6 +40,8 @@ const nodes = Array.isArray(vulnerability.nodes) ? vulnerability.nodes : [];
 const isAllowed =
   vulnerability.name === 'brace-expansion' &&
   vulnerability.severity === 'high' &&
+  advisories.length >= 1 &&
+  advisories.length === vulnerability.via.length &&
   advisories.every(advisory=>allowedAdvisories.includes(advisory.url)) &&
   advisories.every(advisory=>advisory.severity === 'high') &&
   nodes.length === 1 &&
@@ -48,6 +49,19 @@ const isAllowed =
 
 if (!isAllowed) {
   fail('期限付き例外のGHSAまたは依存経路と一致しません');
+}
+
+function derivesOnlyFromAllowedRoot(name, visiting = new Set()) {
+  if (name === 'brace-expansion') return true;
+  if (visiting.has(name)) return false;
+  const current = highByName.get(name);
+  if (!current || !Array.isArray(current.via) || current.via.length === 0) return false;
+  const next = new Set(visiting).add(name);
+  return current.via.every((entry) => typeof entry === 'string' && derivesOnlyFromAllowedRoot(entry, next));
+}
+
+if (!vulnerabilityEntries.every(([name]) => derivesOnlyFromAllowedRoot(name))) {
+  fail(`期限付き例外以外の脆弱性を検出しました（${vulnerabilities.length}件）`);
 }
 
 if (Date.now() >= exceptionExpiresAt) {
