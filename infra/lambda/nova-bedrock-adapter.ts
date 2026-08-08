@@ -2,7 +2,7 @@ import { GetAccountDataRetentionCommand } from '@aws-sdk/client-bedrock';
 import { ConverseCommand, ConverseCommandInput } from '@aws-sdk/client-bedrock-runtime';
 import { NovaTransport } from './nova-provider';
 
-export type RetentionFailureReason = 'ACCESS_DENIED' | 'VALIDATION' | 'THROTTLED' | 'SERVICE_UNAVAILABLE' | 'INVALID_RESPONSE' | 'MODE_NOT_ALLOWED' | 'UNKNOWN';
+export type RetentionFailureReason = 'ACCESS_DENIED' | 'VALIDATION' | 'THROTTLED' | 'SERVICE_UNAVAILABLE' | 'CREDENTIALS' | 'NETWORK' | 'CLIENT_RUNTIME' | 'NAME_MISSING' | 'SDK_METADATA_UNKNOWN' | 'INVALID_RESPONSE' | 'MODE_NOT_ALLOWED' | 'UNKNOWN';
 export type RetentionCheckResult =
   { readonly kind: 'verified'; readonly mode: string } |
   { readonly kind: 'failed'; readonly reason: RetentionFailureReason };
@@ -27,6 +27,9 @@ function retentionFailureReason(error: unknown): RetentionFailureReason {
       ? candidate.name
       : '';
     if (['AccessDeniedException', 'AccessDenied', 'UnauthorizedException', 'UnrecognizedClientException'].includes(name)) return 'ACCESS_DENIED';
+    if (name === 'CredentialsProviderError') return 'CREDENTIALS';
+    if (['TimeoutError', 'NetworkingError', 'EndpointError'].includes(name)) return 'NETWORK';
+    if (name === 'TypeError' || name === 'Error') return 'CLIENT_RUNTIME';
     if (name === 'ValidationException') return 'VALIDATION';
     if (name === 'ThrottlingException') return 'THROTTLED';
     if (name === 'ServiceUnavailableException' || name === 'InternalServerException') return 'SERVICE_UNAVAILABLE';
@@ -38,6 +41,8 @@ function retentionFailureReason(error: unknown): RetentionFailureReason {
     if (status === 400) return 'VALIDATION';
     if (status === 429) return 'THROTTLED';
     if (typeof status === 'number' && status >= 500 && status <= 599) return 'SERVICE_UNAVAILABLE';
+    if (metadata) return 'SDK_METADATA_UNKNOWN';
+    if (!name) return 'NAME_MISSING';
   } catch { return 'UNKNOWN'; }
   return 'UNKNOWN';
 }
