@@ -42,6 +42,24 @@ describe('npm auditの期限付き例外', () => {
     expect(result.status).toBe(1);
   });
 
+  it('npm auditが同じroot advisoryから派生表示する親packageを許容する', () => {
+    const result = run(report({
+      'brace-expansion': {
+        name: 'brace-expansion', severity: 'high',
+        via: [{ url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg', severity: 'high' }],
+        nodes: ['node_modules/aws-cdk-lib/node_modules/brace-expansion'],
+      },
+      minimatch: {
+        name: 'minimatch', severity: 'high', via: ['brace-expansion'], nodes: ['node_modules/minimatch'],
+      },
+      'aws-cdk-lib': {
+        name: 'aws-cdk-lib', severity: 'high', via: ['minimatch'], nodes: ['node_modules/aws-cdk-lib'],
+      },
+    }));
+
+    expect(result.status).toBe(0);
+  });
+
   it('別のHighまたはCritical脆弱性があれば拒否する', () => {
     const result = run(report({
       lodash: {
