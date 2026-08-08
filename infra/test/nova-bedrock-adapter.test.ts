@@ -56,4 +56,15 @@ describe('Bedrock account data retention起動検証', () => {
     const controlClient = { send: jest.fn().mockRejectedValue(hostile) };
     await expect(loadAccountDataRetentionMode(controlClient)).resolves.toEqual({ kind: 'failed', reason: 'UNKNOWN' });
   });
+
+  it.each([
+    [403, 'ACCESS_DENIED'],
+    [400, 'VALIDATION'],
+    [429, 'THROTTLED'],
+    [500, 'SERVICE_UNAVAILABLE'],
+  ])('未知のSDK例外でもHTTP %iを固定理由%sへ分類する', async (httpStatusCode, reason) => {
+    const error = { name: 'UnknownSdkError', $metadata: { httpStatusCode }, message: 'secret detail' };
+    const controlClient = { send: jest.fn().mockRejectedValue(error) };
+    await expect(loadAccountDataRetentionMode(controlClient)).resolves.toEqual({ kind: 'failed', reason });
+  });
 });
