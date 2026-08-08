@@ -40,6 +40,8 @@ const nodes = Array.isArray(vulnerability.nodes) ? vulnerability.nodes : [];
 const isAllowed =
   vulnerability.name === 'brace-expansion' &&
   vulnerability.severity === 'high' &&
+  advisories.length >= 1 &&
+  advisories.length === vulnerability.via.length &&
   advisories.every(advisory=>allowedAdvisories.includes(advisory.url)) &&
   advisories.every(advisory=>advisory.severity === 'high') &&
   nodes.length === 1 &&

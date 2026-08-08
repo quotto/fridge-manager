@@ -42,6 +42,20 @@ describe('npm auditの期限付き例外', () => {
     expect(result.status).toBe(1);
   });
 
+  it.each([
+    ['空のvia', []],
+    ['文字列だけのvia', ['brace-expansion']],
+  ])('root advisoryの%sをfail closedで拒否する', (_label, via) => {
+    const result = run(report({
+      'brace-expansion': {
+        name: 'brace-expansion', severity: 'high', via,
+        nodes: ['node_modules/aws-cdk-lib/node_modules/brace-expansion'],
+      },
+    }));
+
+    expect(result.status).toBe(1);
+  });
+
   it('npm auditが同じroot advisoryから派生表示する親packageを許容する', () => {
     const result = run(report({
       'brace-expansion': {
