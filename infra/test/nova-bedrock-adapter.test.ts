@@ -80,6 +80,10 @@ describe('Bedrock account data retention起動検証', () => {
     [{ name: 'TypeError', message: 'Cannot read properties of undefined (secret)' }, 'SDK_DESERIALIZATION'],
     [{ name: 'TypeError', message: 'Invalid URL: secret endpoint' }, 'CLIENT_CONFIGURATION'],
     [{ name: 'TypeError', message: 'Invalid RFC-3339 date-time value: secret' }, 'SDK_DATE_DESERIALIZATION'],
+    [{ name: 'TypeError', message: 'Invalid month: secret' }, 'SDK_DATE_DESERIALIZATION'],
+    [{ name: 'TypeError', message: 'Expected string, got object: secret' }, 'SDK_SHAPE_DESERIALIZATION'],
+    [{ name: 'TypeError', message: "Cannot load config 'secret'. Expected number" }, 'CLIENT_CONFIGURATION'],
+    [{ name: 'TypeError', message: 'The "input" argument must be ArrayBuffer. secret' }, 'SDK_BUFFER'],
   ])('runtime例外を本文を出さず固定カテゴリへ分類する', async (error, reason) => {
     const controlClient = { send: jest.fn().mockRejectedValue(error) };
     await expect(loadAccountDataRetentionMode(controlClient)).resolves.toEqual({ kind: 'failed', reason });

@@ -2,7 +2,7 @@ import { GetAccountDataRetentionCommand } from '@aws-sdk/client-bedrock';
 import { ConverseCommand, ConverseCommandInput } from '@aws-sdk/client-bedrock-runtime';
 import { NovaTransport } from './nova-provider';
 
-export type RetentionFailureReason = 'ACCESS_DENIED' | 'VALIDATION' | 'THROTTLED' | 'SERVICE_UNAVAILABLE' | 'CREDENTIALS' | 'NETWORK' | 'CLIENT_CONFIGURATION' | 'SDK_DESERIALIZATION' | 'SDK_DATE_DESERIALIZATION' | 'CLIENT_TYPE_ERROR' | 'CLIENT_ERROR' | 'NAME_MISSING' | 'SDK_METADATA_UNKNOWN' | 'INVALID_RESPONSE' | 'MODE_NOT_ALLOWED' | 'UNKNOWN';
+export type RetentionFailureReason = 'ACCESS_DENIED' | 'VALIDATION' | 'THROTTLED' | 'SERVICE_UNAVAILABLE' | 'CREDENTIALS' | 'NETWORK' | 'CLIENT_CONFIGURATION' | 'SDK_DESERIALIZATION' | 'SDK_DATE_DESERIALIZATION' | 'SDK_SHAPE_DESERIALIZATION' | 'SDK_BUFFER' | 'CLIENT_TYPE_ERROR' | 'CLIENT_ERROR' | 'NAME_MISSING' | 'SDK_METADATA_UNKNOWN' | 'INVALID_RESPONSE' | 'MODE_NOT_ALLOWED' | 'UNKNOWN';
 export type RetentionCheckResult =
   { readonly kind: 'verified'; readonly mode: string } |
   { readonly kind: 'failed'; readonly reason: RetentionFailureReason };
@@ -34,9 +34,13 @@ function retentionFailureReason(error: unknown): RetentionFailureReason {
     const message = candidate?.message;
     if (typeof message === 'string') {
       if (message.includes('fetch failed')) return 'NETWORK';
-      if (message.includes('Invalid URL')) return 'CLIENT_CONFIGURATION';
+      if (message.includes('Invalid URL') || message.includes('Cannot load')) return 'CLIENT_CONFIGURATION';
       if (message.includes('Cannot read properties of undefined') || message.includes('Cannot read property')) return 'SDK_DESERIALIZATION';
-      if (message.includes('date-time') || message.includes('timestamp') || message.includes('RFC-3339') || message.includes('RFC-7231')) return 'SDK_DATE_DESERIALIZATION';
+      if (message.includes('date-time') || message.includes('timestamp') || message.includes('RFC-3339') || message.includes('RFC-7231') ||
+          message.includes('RFC3339') || message.includes('RFC7231') || message.includes('Epoch') || message.includes('Invalid month') ||
+          message.includes('Invalid day') || message.includes('Offset direction') || message.includes(' must be between ')) return 'SDK_DATE_DESERIALIZATION';
+      if (message.startsWith('Expected ')) return 'SDK_SHAPE_DESERIALIZATION';
+      if (message.includes('"input" argument') || message.includes('base64')) return 'SDK_BUFFER';
     }
     if (name === 'TypeError') return 'CLIENT_TYPE_ERROR';
     if (name === 'Error') return 'CLIENT_ERROR';
