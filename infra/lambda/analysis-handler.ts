@@ -38,6 +38,12 @@ export class AnalysisError extends Error {
   }
 }
 
+/** 保持条件を確認できず、実モデルを一度も呼ばずに停止したことを内部だけへ伝える。 */
+export class ProviderPreflightError extends AnalysisError {
+  public readonly providerCalled = false;
+  public constructor() { super('PROVIDER_UNAVAILABLE', 503); }
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const QUANTITY = /^(?:(?:0|[1-9][0-9]?)(?:\.[0-9]{1,2})?|100)$/;
@@ -197,6 +203,7 @@ export function createAnalysisHandler(deps: { readonly provider: AnalysisProvide
         await deps.idempotencyStore.abandon(`${userHash}#${request.requestId}`, hash).catch(() => undefined);
       }
       const typed = error instanceof AnalysisError ? error : new AnalysisError('INTERNAL_ERROR', 500);
+      if (typed instanceof ProviderPreflightError) providerCalled = false;
       return response(typed.statusCode, request.requestId, typed.code, typed.retryAt, undefined, typed.quotaType);
     }
     };

@@ -13,14 +13,15 @@ const modelId = process.env.BEDROCK_MODEL_ID ?? '';
 const allowedModes = (process.env.BEDROCK_MODEL_ALLOWED_MODES ?? '').split(',').filter(Boolean);
 const retentionClient = new BedrockClient({ region: bedrockRegion || 'ap-northeast-1' });
 // 初期化フェーズで検証を開始し、失敗は未処理rejectionにせずproviderをfail closedにする。
-const retentionModePromise = loadAccountDataRetentionMode(retentionClient).catch(() => undefined);
+const retentionCheckPromise = loadAccountDataRetentionMode(retentionClient);
 const transport = new BedrockNovaTransport(new BedrockRuntimeClient({ region: bedrockRegion || 'ap-northeast-1' }));
 const telemetry = new EmfAnalysisTelemetry('FridgeManager/Analysis', process.env.ENVIRONMENT ?? 'unknown');
 const provider = createProductionProvider(
   { region: bedrockRegion, modelId, allowedModes },
-  retentionModePromise,
+  retentionCheckPromise,
   transport,
   (usage) => telemetry.recordProviderUsage(usage),
+  (event) => telemetry.recordProviderPreflightFailure(event),
 );
 const tableName = process.env.IDEMPOTENCY_TABLE_NAME;
 const controlTableName = process.env.CONTROL_TABLE_NAME;
