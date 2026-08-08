@@ -48,8 +48,8 @@ describe('Bedrock account data retention起動検証', () => {
     ['UnrecognizedClientException', 'ACCESS_DENIED'],
     ['CredentialsProviderError', 'CREDENTIALS'],
     ['TimeoutError', 'NETWORK'],
-    ['TypeError', 'CLIENT_RUNTIME'],
-    ['Error', 'CLIENT_RUNTIME'],
+    ['TypeError', 'CLIENT_TYPE_ERROR'],
+    ['Error', 'CLIENT_ERROR'],
     ['ThrottlingException', 'THROTTLED'],
     ['ServiceUnavailableException', 'SERVICE_UNAVAILABLE'],
     ['UnexpectedSdkException', 'UNKNOWN'],
@@ -79,6 +79,7 @@ describe('Bedrock account data retention起動検証', () => {
     [{ name: 'TypeError', message: 'fetch failed: secret endpoint' }, 'NETWORK'],
     [{ name: 'TypeError', message: 'Cannot read properties of undefined (secret)' }, 'SDK_DESERIALIZATION'],
     [{ name: 'TypeError', message: 'Invalid URL: secret endpoint' }, 'CLIENT_CONFIGURATION'],
+    [{ name: 'TypeError', message: 'Invalid RFC-3339 date-time value: secret' }, 'SDK_DATE_DESERIALIZATION'],
   ])('runtime例外を本文を出さず固定カテゴリへ分類する', async (error, reason) => {
     const controlClient = { send: jest.fn().mockRejectedValue(error) };
     await expect(loadAccountDataRetentionMode(controlClient)).resolves.toEqual({ kind: 'failed', reason });
