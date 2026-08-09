@@ -1,4 +1,3 @@
-import { GetAccountDataRetentionCommand } from '@aws-sdk/client-bedrock';
 import { ConverseCommand, type ConverseCommandInput } from '@aws-sdk/client-bedrock-runtime';
 import { Readable } from 'node:stream';
 import { SignatureV4 } from '@smithy/signature-v4';
@@ -46,7 +45,7 @@ describe('Bedrock account data retention起動検証', () => {
     }) };
     const client = new SignedBedrockRetentionClient('ap-northeast-1', requestSigner, handler);
 
-    await expect(client.send(new GetAccountDataRetentionCommand({}))).resolves.toEqual({ mode: 'none' });
+    await expect(client.getAccountDataRetention()).resolves.toEqual({ mode: 'none' });
     const sent = handler.handle.mock.calls[0]?.[0];
     expect(sent).toMatchObject({ protocol: 'https:', hostname: 'bedrock.ap-northeast-1.amazonaws.com', method: 'GET', path: '/data-retention' });
     expect(sent?.headers.authorization).toMatch(/^AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE\//);
@@ -89,19 +88,16 @@ describe('Bedrock account data retention起動検証', () => {
     await expect(loadAccountDataRetentionMode(client)).resolves.toEqual({ kind: 'failed', reason });
   });
 
-  it('GetAccountDataRetentionCommandを送り現在のmodeを返す', async () => {
-    const controlClient = { send: jest.fn().mockResolvedValue({ mode: 'none' }) };
+  it('control-plane clientから現在のmodeを返す', async () => {
+    const controlClient = { getAccountDataRetention: jest.fn().mockResolvedValue({ mode: 'none' }) };
 
     await expect(loadAccountDataRetentionMode(controlClient)).resolves.toEqual({ kind: 'verified', mode: 'none' });
 
-    expect(controlClient.send).toHaveBeenCalledTimes(1);
-    const command = controlClient.send.mock.calls[0]?.[0];
-    expect(command).toBeInstanceOf(GetAccountDataRetentionCommand);
-    expect(command.input).toEqual({});
+    expect(controlClient.getAccountDataRetention).toHaveBeenCalledTimes(1);
   });
 
   it('保持modeを取得できない場合はfail closedにする', async () => {
-    const controlClient = { send: jest.fn().mockResolvedValue({ mode: undefined }) };
+    const controlClient = { getAccountDataRetention: jest.fn().mockResolvedValue({ mode: undefined }) };
     await expect(loadAccountDataRetentionMode(controlClient)).resolves.toEqual({ kind: 'failed', reason: 'INVALID_RESPONSE' });
   });
 
@@ -118,23 +114,23 @@ describe('Bedrock account data retention起動検証', () => {
     ['ServiceUnavailableException', 'SERVICE_UNAVAILABLE'],
     ['UnexpectedSdkException', 'UNKNOWN'],
   ])('保持mode取得APIの%sを固定理由へ分類してfail closedにする', async (name, reason) => {
-    const controlClient = { send: jest.fn().mockRejectedValue(Object.assign(new Error('secret detail'), { name })) };
+    const controlClient = { getAccountDataRetention: jest.fn().mockRejectedValue(Object.assign(new Error('secret detail'), { name })) };
     await expect(loadAccountDataRetentionMode(controlClient)).resolves.toEqual({ kind: 'failed', reason });
   });
 
   it('例外nameの参照自体が失敗してもUNKNOWNへ閉じる', async () => {
     const hostile = Object.defineProperty({}, 'name', { get() { throw new Error('secret getter'); } });
-    const controlClient = { send: jest.fn().mockRejectedValue(hostile) };
+    const controlClient = { getAccountDataRetention: jest.fn().mockRejectedValue(hostile) };
     await expect(loadAccountDataRetentionMode(controlClient)).resolves.toEqual({ kind: 'failed', reason: 'UNKNOWN' });
   });
 
   it('名前のない例外を固定カテゴリへ分類する', async () => {
-    const controlClient = { send: jest.fn().mockRejectedValue({ message: 'secret detail' }) };
+    const controlClient = { getAccountDataRetention: jest.fn().mockRejectedValue({ message: 'secret detail' }) };
     await expect(loadAccountDataRetentionMode(controlClient)).resolves.toEqual({ kind: 'failed', reason: 'NAME_MISSING' });
   });
 
   it('statusなしSDK metadataを固定カテゴリへ分類する', async () => {
-    const controlClient = { send: jest.fn().mockRejectedValue({ name: 'OddSdkError', $metadata: {} }) };
+    const controlClient = { getAccountDataRetention: jest.fn().mockRejectedValue({ name: 'OddSdkError', $metadata: {} }) };
     await expect(loadAccountDataRetentionMode(controlClient)).resolves.toEqual({ kind: 'failed', reason: 'SDK_METADATA_UNKNOWN' });
   });
 
@@ -149,7 +145,7 @@ describe('Bedrock account data retention起動検証', () => {
     [{ name: 'TypeError', message: "Cannot load config 'secret'. Expected number" }, 'CLIENT_CONFIGURATION'],
     [{ name: 'TypeError', message: 'The "input" argument must be ArrayBuffer. secret' }, 'SDK_BUFFER'],
   ])('runtime例外を本文を出さず固定カテゴリへ分類する', async (error, reason) => {
-    const controlClient = { send: jest.fn().mockRejectedValue(error) };
+    const controlClient = { getAccountDataRetention: jest.fn().mockRejectedValue(error) };
     await expect(loadAccountDataRetentionMode(controlClient)).resolves.toEqual({ kind: 'failed', reason });
   });
 
@@ -160,7 +156,7 @@ describe('Bedrock account data retention起動検証', () => {
     [500, 'SERVICE_UNAVAILABLE'],
   ])('未知のSDK例外でもHTTP %iを固定理由%sへ分類する', async (httpStatusCode, reason) => {
     const error = { name: 'UnknownSdkError', $metadata: { httpStatusCode }, message: 'secret detail' };
-    const controlClient = { send: jest.fn().mockRejectedValue(error) };
+    const controlClient = { getAccountDataRetention: jest.fn().mockRejectedValue(error) };
     await expect(loadAccountDataRetentionMode(controlClient)).resolves.toEqual({ kind: 'failed', reason });
   });
 });
