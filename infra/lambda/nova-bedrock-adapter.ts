@@ -1,4 +1,3 @@
-import { GetAccountDataRetentionCommand } from '@aws-sdk/client-bedrock';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { ConverseCommand, ConverseCommandInput } from '@aws-sdk/client-bedrock-runtime';
 import { createHash, createHmac, Hash, Hmac } from 'node:crypto';
@@ -15,6 +14,7 @@ export type RetentionCheckResult =
 interface CommandSender {
   send(command: unknown): Promise<unknown>;
 }
+interface RetentionClient { getAccountDataRetention(): Promise<unknown>; }
 
 interface RequestSigner { sign(request: HttpRequest): Promise<HttpRequest>; }
 interface RequestHandler { handle(request: HttpRequest): Promise<{ response: { statusCode: number; body?: unknown } }>; }
@@ -50,7 +50,7 @@ async function readBody(body: unknown): Promise<string> {
 }
 
 /** SDKの日時デシリアライズを避け、署名済み応答から保持modeだけを厳格に読む。 */
-export class SignedBedrockRetentionClient implements CommandSender {
+export class SignedBedrockRetentionClient implements RetentionClient {
   private readonly signer: RequestSigner;
   private readonly handler: RequestHandler;
   public constructor(
@@ -67,8 +67,7 @@ export class SignedBedrockRetentionClient implements CommandSender {
     this.handler = handler ?? handlerFactory(RETENTION_HTTP_TIMEOUTS);
   }
 
-  public async send(command: unknown): Promise<unknown> {
-    if (!(command instanceof GetAccountDataRetentionCommand)) throw new TypeError('unsupported command');
+  public async getAccountDataRetention(): Promise<unknown> {
     const hostname = `bedrock.${this.region}.amazonaws.com`;
     let request: HttpRequest;
     try {
@@ -149,9 +148,9 @@ function retentionFailureReason(error: unknown): RetentionFailureReason {
 }
 
 /** アカウント保持モードを権威あるBedrock control-plane APIから取得し、失敗を固定分類する。 */
-export async function loadAccountDataRetentionMode(client: CommandSender): Promise<RetentionCheckResult> {
+export async function loadAccountDataRetentionMode(client: RetentionClient): Promise<RetentionCheckResult> {
   try {
-    const response = await client.send(new GetAccountDataRetentionCommand({}));
+    const response = await client.getAccountDataRetention();
     const mode = response && typeof response === 'object' ? (response as { mode?: unknown }).mode : undefined;
     return typeof mode === 'string' ? { kind: 'verified', mode } : { kind: 'failed', reason: 'INVALID_RESPONSE' };
   } catch (error) {
