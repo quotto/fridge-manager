@@ -66,7 +66,7 @@ export class FoundationStack extends Stack {
       truststore.addToResourcePolicy(new iam.PolicyStatement({
         sid: 'AllowApiGatewayReadMtlsTruststore',
         principals: [new iam.ServicePrincipal('apigateway.amazonaws.com')],
-        actions: ['s3:GetObject'],
+        actions: ['s3:GetObject', 's3:GetObjectVersion'],
         resources: [truststoreObjectArn],
       }));
       encryptionKey.addToResourcePolicy(new iam.PolicyStatement({
