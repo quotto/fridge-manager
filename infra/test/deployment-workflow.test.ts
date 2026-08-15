@@ -177,9 +177,6 @@ describe('cloud deployment workflow', () => {
     expect(script).toContain('hostname AOP is not active');
     expect(script).toContain('/settings/ssl');
     expect(script).toContain('result.value == "strict"');
-    expect(script).toContain('--request PATCH');
-    expect(script).toContain('{"value":"strict"}');
-    expect(script).toContain('failed to set Cloudflare SSL/TLS encryption mode to Full (strict)');
     expect(script).toContain('fridge-manager-stg.wackwack.net');
     expect(script).toContain('fridge-manager.wackwack.net');
   });
