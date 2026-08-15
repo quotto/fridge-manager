@@ -126,11 +126,12 @@ describe('AnalysisApiStack', () => {
     });
   });
 
-  it('全体8000回、WAF 10回/分、50 USD予算と50/80/100通知を構成する', () => {
+  it('全体8000回、Cloudflare edge制限、50 USD予算と50/80/100通知を構成する', () => {
     expect(template.toJSON().Parameters).toMatchObject({ GlobalQuotaLimit: { Default: 8000 }, AnomalyThresholdUsd: { Default: 5 } });
     expect(template.toJSON().Parameters).not.toHaveProperty('BudgetNotificationEmail');
     expect(template.toJSON().Parameters).toHaveProperty('OperationsNotificationEmail');
-    template.hasResourceProperties('AWS::WAFv2::WebACL', { Scope: 'REGIONAL', Rules: [Match.objectLike({ Statement: { RateBasedStatement: Match.objectLike({ Limit: 10, EvaluationWindowSec: 60, AggregateKeyType: 'IP' }) }, VisibilityConfig: Match.objectLike({ SampledRequestsEnabled: false }) })] });
+    template.resourceCountIs('AWS::WAFv2::WebACL', 0);
+    template.resourceCountIs('AWS::WAFv2::WebACLAssociation', 0);
     template.hasResourceProperties('AWS::Budgets::Budget', { Budget: { BudgetLimit: { Amount: 50, Unit: 'USD' }, TimeUnit: 'MONTHLY' } });
     const rendered = JSON.stringify(template.toJSON());
     for (const threshold of [50, 80, 100]) expect(rendered).toContain(`"Threshold":${threshold}`);

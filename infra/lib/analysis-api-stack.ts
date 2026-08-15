@@ -8,7 +8,6 @@ import * as budgets from 'aws-cdk-lib/aws-budgets';
 import * as ce from 'aws-cdk-lib/aws-ce';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
-import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
@@ -340,17 +339,6 @@ export class AnalysisApiStack extends Stack {
     });
     api5xxAlarm.addAlarmAction(new cwActions.SnsAction(alertTopic));
     authorizerErrorAlarm.addAlarmAction(new cwActions.SnsAction(alertTopic));
-    const webAcl = new wafv2.CfnWebACL(this, 'AnalysisWebAcl', { scope: 'REGIONAL', defaultAction: { allow: {} }, visibilityConfig: {
-      cloudWatchMetricsEnabled: true, metricName: `fridge-manager-${props.config.environment}-waf`, sampledRequestsEnabled: false,
-    }, rules: [{ name: 'AnalysisIpRateLimit', priority: 0, action: { block: {} }, statement: { rateBasedStatement: {
-      aggregateKeyType: 'IP', limit: 10, evaluationWindowSec: 60, scopeDownStatement: { andStatement: { statements: [
-        { byteMatchStatement: { fieldToMatch: { method: {} }, positionalConstraint: 'EXACTLY', searchString: 'POST', textTransformations: [{ priority: 0, type: 'NONE' }] } },
-        { byteMatchStatement: { fieldToMatch: { uriPath: {} }, positionalConstraint: 'EXACTLY', searchString: '/v1/analysis', textTransformations: [{ priority: 0, type: 'NONE' }] } },
-      ] } },
-    } }, visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: 'analysis-ip-rate-limit', sampledRequestsEnabled: false } }] });
-    new wafv2.CfnWebACLAssociation(this, 'AnalysisWebAclAssociation', {
-      webAclArn: webAcl.attrArn, resourceArn: `arn:${this.partition}:apigateway:${this.region}::/restapis/${api.restApiId}/stages/${api.deploymentStage.stageName}`,
-    });
     fn.addPermission('AllowApiGatewayInvoke', { principal: new iam.ServicePrincipal('apigateway.amazonaws.com'), sourceArn: api.arnForExecuteApi('POST', '/v1/analysis') });
     authorizerFn.addPermission('AllowApiGatewayAuthorizerInvoke', {
       principal: new iam.ServicePrincipal('apigateway.amazonaws.com'),
