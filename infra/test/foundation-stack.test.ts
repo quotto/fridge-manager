@@ -122,7 +122,7 @@ describe('FoundationStack', () => {
         Match.objectLike({
           Sid: 'AllowApiGatewayReadMtlsTruststore',
           Principal: { Service: 'apigateway.amazonaws.com' },
-          Action: 's3:GetObject',
+          Action: ['s3:GetObject', 's3:GetObjectVersion'],
           Resource: Match.anyValue(),
         }),
       ]) }),
