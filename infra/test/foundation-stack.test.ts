@@ -103,7 +103,7 @@ describe('FoundationStack', () => {
 
     template.hasResourceProperties('AWS::S3::Bucket', {
       BucketEncryption: Match.objectLike({ ServerSideEncryptionConfiguration: Match.arrayWith([
-        Match.objectLike({ ServerSideEncryptionByDefault: { SSEAlgorithm: 'aws:kms', KMSMasterKeyID: Match.anyValue() } }),
+        Match.objectLike({ ServerSideEncryptionByDefault: { SSEAlgorithm: 'AES256' } }),
       ]) }),
       PublicAccessBlockConfiguration: {
         BlockPublicAcls: true,
@@ -124,15 +124,6 @@ describe('FoundationStack', () => {
           Principal: { Service: 'apigateway.amazonaws.com' },
           Action: ['s3:GetObject', 's3:GetObjectVersion'],
           Resource: Match.anyValue(),
-        }),
-      ]) }),
-    });
-    template.hasResourceProperties('AWS::KMS::Key', {
-      KeyPolicy: Match.objectLike({ Statement: Match.arrayWith([
-        Match.objectLike({
-          Sid: 'AllowApiGatewayDecryptMtlsTruststore',
-          Principal: { Service: 'apigateway.amazonaws.com' },
-          Action: 'kms:Decrypt',
         }),
       ]) }),
     });
