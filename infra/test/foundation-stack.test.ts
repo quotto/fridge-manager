@@ -94,6 +94,44 @@ describe('FoundationStack', () => {
       expect(resource).toMatchObject({ DeletionPolicy: 'Retain', UpdateReplacePolicy: 'Retain' });
     }
   });
+
+  it.each(['stg', 'prod'] as const)('%s のAOP truststoreを暗号化・versioning・公開遮断付きで用意する', (environment) => {
+    const app = new App();
+    const config = getEnvironmentConfig(environment);
+    const stack = new FoundationStack(app, config.stackName, { config });
+    const template = Template.fromStack(stack);
+
+    template.hasResourceProperties('AWS::S3::Bucket', {
+      BucketEncryption: Match.objectLike({ ServerSideEncryptionConfiguration: Match.arrayWith([
+        Match.objectLike({ ServerSideEncryptionByDefault: { SSEAlgorithm: 'aws:kms', KMSMasterKeyID: Match.anyValue() } }),
+      ]) }),
+      PublicAccessBlockConfiguration: {
+        BlockPublicAcls: true,
+        BlockPublicPolicy: true,
+        IgnorePublicAcls: true,
+        RestrictPublicBuckets: true,
+      },
+      VersioningConfiguration: { Status: 'Enabled' },
+    });
+    template.hasResourceProperties('AWS::S3::BucketPolicy', {
+      PolicyDocument: Match.objectLike({ Statement: Match.arrayWith([
+        Match.objectLike({
+          Effect: 'Deny',
+          Condition: { Bool: { 'aws:SecureTransport': 'false' } },
+        }),
+      ]) }),
+    });
+    template.hasOutput('AopTruststoreBucketName', { Value: Match.anyValue() });
+    template.hasOutput('AopTruststoreBucketName', { Export: { Name: `fridge-manager-${environment}-aop-truststore-bucket` } });
+  });
+
+  it('dev には公開AOP truststoreを作らない', () => {
+    const app = new App();
+    const config = getEnvironmentConfig('dev');
+    const template = Template.fromStack(new FoundationStack(app, config.stackName, { config }));
+
+    template.resourceCountIs('AWS::S3::Bucket', 0);
+  });
 });
 
 describe('LeastPrivilegeIamAspect', () => {

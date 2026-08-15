@@ -54,6 +54,10 @@ describe('cloud deployment workflow', () => {
     expect(script).not.toContain('--no-rollback');
     expect(script).toContain('--require-approval never');
     expect(script).toContain('bash .github/scripts/verify-aws-account.sh');
+    expect(script).toContain('ACM_CERTIFICATE_ARN');
+    expect(script).toContain('AopTruststoreBucketName');
+    expect(script).toContain('AopTruststoreVersion');
+    expect(script).toContain('npx cdk deploy "$foundation"');
     const accountGuard = read('.github/scripts/verify-aws-account.sh');
     expect(accountGuard).toContain('aws sts get-caller-identity');
     expect(accountGuard).toContain('actual_account" == "$AWS_ACCOUNT_ID');
@@ -111,5 +115,72 @@ describe('cloud deployment workflow', () => {
     expect(new AnalysisApiStack(new App(), 'DevProtection', { config: getEnvironmentConfig('dev') }).terminationProtection).toBe(false);
     expect(new AnalysisApiStack(new App(), 'StgProtection', { config: getEnvironmentConfig('stg') }).terminationProtection).toBe(false);
     expect(new AnalysisApiStack(new App(), 'ProdProtection', { config: getEnvironmentConfig('prod') }).terminationProtection).toBe(true);
+  });
+
+  it('AOP証明書の生成workflowはGitHub secretを表示せず環境別に実行する', () => {
+    const workflow = read('.github/workflows/provision-cloudflare-aop.yml');
+    expect(workflow).toContain('workflow_dispatch:');
+    expect(workflow).toContain('options: [stg, prod]');
+    expect(workflow).toContain("inputs.target == 'prod' && 'production' || 'staging'");
+    expect(workflow).toContain('CLOUDFLARE_AOP_TOKEN: ${{ secrets.CLOUDFLARE_AOP_TOKEN }}');
+    expect(workflow).toContain('contents: read');
+    expect(workflow).toContain('id-token: write');
+    expect(workflow).toContain('AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}');
+    expect(workflow).not.toContain('set -x');
+    expect(workflow).toContain('bash .github/scripts/provision-cloudflare-aop.sh');
+    const script = read('.github/scripts/provision-cloudflare-aop.sh');
+    expect(script).toContain('bash .github/scripts/verify-aws-account.sh');
+    expect(script).toContain('openssl x509 -req -sha256 -days 89');
+    expect(script).not.toContain('origin_tls_client_auth/hostnames"');
+    expect(script).not.toContain('--sse AES256');
+  });
+
+  it('AOP有効化はAPI GatewayのmTLS配備確認後にのみ実行する', () => {
+    const workflow = read('.github/workflows/activate-cloudflare-aop.yml');
+    const script = read('.github/scripts/activate-cloudflare-aop.sh');
+    expect(workflow).toContain('workflow_dispatch:');
+    expect(workflow).toContain("inputs.target == 'prod' && 'production' || 'staging'");
+    expect(workflow).toContain('CLOUDFLARE_AOP_TOKEN: ${{ secrets.CLOUDFLARE_AOP_TOKEN }}');
+    expect(script).toContain('aws apigateway get-domain-name');
+    expect(script).toContain('truststoreVersion');
+    expect(script).toContain('pending-manifest.json');
+    expect(script).toContain('active-manifest.json');
+    expect(script).toContain('cert_status == "active"');
+    expect(script).toContain('Cloudflare AOP certificate did not become active before timeout');
+    expect(script).toContain('origin_tls_client_auth/hostnames');
+    expect(script).toContain('select(.success == true)');
+  });
+
+  it('Cloudflare設定はプロキシDNSと二つのhostnameを分離した単一Rate Limiting ruleを適用する', () => {
+    const workflow = read('.github/workflows/configure-cloudflare-api.yml');
+    const script = read('.github/scripts/configure-cloudflare-api.sh');
+    expect(workflow).toContain('CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}');
+    expect(workflow).toContain('CLOUDFLARE_AOP_TOKEN: ${{ secrets.CLOUDFLARE_AOP_TOKEN }}');
+    expect(workflow).toContain("inputs.target == 'prod' && 'production' || 'staging'");
+    expect(script).toContain('proxied:true');
+    expect(script).toContain('http_ratelimit');
+    expect(script).toContain('requests_per_period: 10');
+    expect(script).toContain('characteristics: ["ip.src", "http.host"]');
+    expect(script).toContain('action: "block"');
+    expect(script).toContain('action_parameters');
+    expect(script).toContain('/rulesets/${ruleset_id}/rules');
+    expect(script).toContain('hostname AOP is not active');
+    expect(script).toContain('/settings/ssl');
+    expect(script).toContain('result.value == "strict"');
+    expect(script).toContain('fridge-manager-stg.wackwack.net');
+    expect(script).toContain('fridge-manager.wackwack.net');
+  });
+
+  it('初回bootstrapはFoundation、AOP truststore、API Gateway custom domainの順に配備する', () => {
+    const workflow = read('.github/workflows/bootstrap-cloudflare-api.yml');
+    expect(workflow).toContain('workflow_dispatch:');
+    expect(workflow).toContain('npx cdk deploy "$FOUNDATION_STACK"');
+    expect(workflow).toContain('bash .github/scripts/provision-cloudflare-aop.sh');
+    expect(workflow).toContain('bash .github/scripts/deploy-cloud.sh "${{ inputs.target }}" cdk.out');
+    expect(workflow).toContain('AOP_TRUSTSTORE_PHASE: pending');
+    expect(workflow).toContain('bash .github/scripts/activate-cloudflare-aop.sh');
+    expect(workflow).toContain('bash .github/scripts/configure-cloudflare-api.sh');
+    expect(workflow).toContain('bash .github/scripts/smoke-cloud.sh "${{ inputs.target }}"');
+    expect(workflow).toContain('ACM_CERTIFICATE_ARN: ${{ vars.ACM_CERTIFICATE_ARN }}');
   });
 });

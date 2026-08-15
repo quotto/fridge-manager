@@ -1,0 +1,41 @@
+name: Provision Cloudflare AOP
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Target environment
+        required: true
+        type: choice
+        options: [stg, prod]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: cloudflare-aop-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    name: Generate and upload hostname AOP certificate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: ${{ inputs.target == 'prod' && 'production' || 'staging' }}
+    env:
+      CLOUDFLARE_AOP_TOKEN: ${{ secrets.CLOUDFLARE_AOP_TOKEN }}
+      CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      AWS_REGION: ap-northeast-1
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { persist-credentials: false }
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-northeast-1
+      - name: Generate and upload AOP certificate
+        env:
+          TARGET: ${{ inputs.target }}
+        run: bash .github/scripts/provision-cloudflare-aop.sh

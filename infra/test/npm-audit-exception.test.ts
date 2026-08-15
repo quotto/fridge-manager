@@ -27,7 +27,7 @@ describe('npm auditの期限付き例外', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('GHSA-mh99-v99m-4gvg');
-    expect(result.stdout).toContain('2026-08-15失効');
+    expect(result.stdout).toContain('2026-08-22失効');
   });
 
   it('同じGHSAでもaws-cdk-lib外の依存経路は拒否する', () => {

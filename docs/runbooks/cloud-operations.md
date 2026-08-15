@@ -20,6 +20,9 @@ production deployの完了・中止・失敗後は `PRODUCTION_DEPLOY_ENABLED` �
 - Secret: `OPERATIONS_NOTIFICATION_EMAIL`
 
 `OPERATIONS_NOTIFICATION_EMAIL` にはAWSアカウントで確認済みの既存予算通知先を再利用し、Repository variableやログへ値を出さない。アプリstackは要件固有の50/80/100%予算通知、Cost Anomaly、DLQ、API/Lambda障害をこの通知先へ送り、100%時は自動停止も実行する。SNSの購読確認メールが届いた場合は、各環境の購読を承認する。
+- `CLOUDFLARE_ZONE_ID`, `ACM_CERTIFICATE_ARN`
+
+同じEnvironmentのsecretとして `CLOUDFLARE_API_TOKEN`（Zone DNS / WAF編集およびSSL/TLS mode参照）と `CLOUDFLARE_AOP_TOKEN`（Origin CA証明書編集）を登録する。前者にはZone Settings Readを追加し、Cloudflare zoneのSSL/TLS encryption modeを事前に `Full (strict)` にする。両トークンは用途別に分離し、値、証明書秘密鍵、Cloudflare API応答をActionsログやIssueへ出力しない。
 
 長期AWS access keyは登録しない。GitHub OIDC roleのtrustは対象repository、`main`、対応Environmentの`sub`完全一致に限定する。plan roleはCloudFormation read、release prefixの`S3 GetObject`と必要なKMS Decryptだけを許可する。deploy roleは対象環境のCDK bootstrap roleへのassumeとrelease artifact書込だけを許可し、operations roleは対象環境のcontrol Lambda `InvokeFunction`、control tableの`GetItem`、対象stackの`DescribeStacks`と隔離rollback drill stackだけを許可する。stg/prodのroleとaccountは分離する。
 
@@ -40,6 +43,19 @@ Firebase検証LambdaからGoogle APIへは環境別Workload Identity Poolを使�
 GitHub artifact保持は90日であるため、prod稼働中の現行・既知良好assemblyはrelease bucketで保持する。bucketはversioning、暗号化、MFA DeleteまたはObject Lock、prodのデータ保持期間以上のlifecycleを設定する。sourceからの再synthをrollback artifactとして代用しない。
 
 実accountのEnvironment/OIDC設定がない状態ではdeployを実行しない。認証付き正常系smokeと実停止演習もFirebase limited-use token・実account設定が整うまで留保し、CDK synth、workflow test、未認証negative smokeだけを自動化する。代替としてCloudFormation outputs、API Gateway integration、Lambda/control状態をsynth testとnegative smokeで検証する。
+
+## Cloudflare API edge の初回構築・更新
+
+初回は、対象Environmentの承認下で次を順に実行する。prodはstgのE2E検証とロールバック判断を完了するまで実行しない。
+
+1. `Bootstrap Cloudflare API Origin` workflowを対象環境で起動する。Foundation、AOP用CA truststore、API Gateway Regional custom domain/mTLSの順に作成する。
+2. `Activate Cloudflare AOP` workflowを起動する。workflowはAPI Gatewayに配備済みのtruststore versionがAOP manifestと一致する場合だけ、Cloudflare hostname AOPを有効化する。
+3. `Configure Cloudflare API Edge` workflowを起動し、AOPのcertificate ID一致を確認した後でのみ、API GatewayのRegional domainをCNAMEのプロキシ有効レコードとして設定する。Rate Limiting Ruleは両hostnameを一つのruleで扱い、`ip.src` と `http.host` ごとに `POST /v1/analysis` を10回/分に制限する。
+4. Cloudflare経由の未認証拒否、認証済み正常系、11回目の429、API Gateway custom domainへのmTLSなし直接要求の拒否、`execute-api` endpointの拒否を確認し、Issueへ結果のみを記録する。
+
+CA/leaf証明書の有効期間は短いため、60日ごと、かつ期限の14日前までに同じ順序で更新する。更新では新旧CAを束ねたpending truststore versionを先にAPI Gatewayへ配備し、AOP有効化後に新CAだけをactiveとして記録するため、旧leafを先に拒否しない。障害時はCloudflare DNSを一時的にDNS onlyへ切り替えるのではなく、既知良好なCA versionへCloudFormation rollbackし、AOPをその証明書IDへ再関連付けする。mTLSを無効化して復旧しない。
+
+Cloudflare公開IP CIDRは更新されうる。変更検知を運用監視へ追加するまでは、各月次運用とCloudflare障害時に公式IP一覧との差分を確認し、差分があればIssueを起票してAPI Gateway resource policyのallowlistを更新・stg検証してからprodへ昇格する。
 
 API Gatewayの60秒quota反映までは、dev/stgのintegration timeoutをデフォルト上限29秒へ暫定設定し、prodは60秒を維持する。29秒超ではクライアントが失敗してもLambdaが最大58秒まで継続し、費用が発生し得る。quota反映後はdev/stgを60秒へ戻してsynth diffとstaging smokeを再実行する。stg API stackが`ROLLBACK_COMPLETE`の場合、deploy scriptはその失敗stackだけを削除して再作成し、foundationとprodは削除しない。
 

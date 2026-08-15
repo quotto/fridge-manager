@@ -32,6 +32,7 @@ jobs:
       GOOGLE_WIF_AUDIENCE: ${{ vars.GOOGLE_WIF_AUDIENCE }}
       GOOGLE_SERVICE_ACCOUNT_EMAIL: ${{ vars.GOOGLE_SERVICE_ACCOUNT_EMAIL }}
       OPERATIONS_NOTIFICATION_EMAIL: ${{ secrets.OPERATIONS_NOTIFICATION_EMAIL }}
+      ACM_CERTIFICATE_ARN: ${{ vars.ACM_CERTIFICATE_ARN }}
     steps:
       - name: Checkout CI verified commit
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -127,6 +128,7 @@ jobs:
       GOOGLE_WIF_AUDIENCE: ${{ vars.GOOGLE_WIF_AUDIENCE }}
       GOOGLE_SERVICE_ACCOUNT_EMAIL: ${{ vars.GOOGLE_SERVICE_ACCOUNT_EMAIL }}
       OPERATIONS_NOTIFICATION_EMAIL: ${{ secrets.OPERATIONS_NOTIFICATION_EMAIL }}
+      ACM_CERTIFICATE_ARN: ${{ vars.ACM_CERTIFICATE_ARN }}
     steps:
       - name: Checkout same promoted commit
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4

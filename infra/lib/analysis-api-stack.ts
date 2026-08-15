@@ -1,4 +1,4 @@
-import { CfnOutput, CfnParameter, Duration, Stack, StackProps } from 'aws-cdk-lib';
+import { CfnOutput, CfnParameter, Duration, Fn, Stack, StackProps } from 'aws-cdk-lib';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
@@ -22,6 +22,20 @@ import { EnvironmentConfig } from './environment-config';
 import { loadBedrockModelPolicy } from './bedrock-model-policy';
 
 export interface AnalysisApiStackProps extends StackProps { readonly config: EnvironmentConfig; }
+
+const cloudflareCidrs = [
+  '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22', '141.101.64.0/18',
+  '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20', '197.234.240.0/22', '198.41.128.0/17',
+  '162.158.0.0/15', '104.16.0.0/13', '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22',
+  '2400:cb00::/32', '2606:4700::/32', '2803:f800::/32', '2405:b500::/32', '2405:8100::/32',
+  '2a06:98c0::/29', '2c0f:f248::/32',
+];
+
+function publicApiDomain(environment: EnvironmentConfig['environment']): string | undefined {
+  if (environment === 'stg') return 'fridge-manager-stg.wackwack.net';
+  if (environment === 'prod') return 'fridge-manager.wackwack.net';
+  return undefined;
+}
 
 function apiGatewaySchema(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(apiGatewaySchema);
@@ -60,6 +74,16 @@ function inlineSchemaReference(value: unknown, reference: string, schema: unknow
 export class AnalysisApiStack extends Stack {
   public constructor(scope: Construct, id: string, props: AnalysisApiStackProps) {
     super(scope, id, { ...props, terminationProtection: props.config.terminationProtection });
+    const apiDomain = publicApiDomain(props.config.environment);
+    const acmCertificateArn = apiDomain
+      ? new CfnParameter(this, 'AcmCertificateArn', { type: 'String', minLength: 1 })
+      : undefined;
+    const aopTruststoreVersion = apiDomain
+      ? new CfnParameter(this, 'AopTruststoreVersion', { type: 'String', minLength: 1 })
+      : undefined;
+    const configuredCloudflareCidrs = apiDomain
+      ? new CfnParameter(this, 'CloudflareCidrs', { type: 'CommaDelimitedList', default: cloudflareCidrs.join(',') })
+      : undefined;
     // synth/deploy時に公式証跡の内容と期限を検証し、古い自己申告値でのデプロイを拒否する。
     const bedrockPolicy = loadBedrockModelPolicy();
     const table = new dynamodb.Table(this, 'AnalysisIdempotency', {
@@ -295,6 +319,16 @@ export class AnalysisApiStack extends Stack {
       endpointTypes: [apigateway.EndpointType.REGIONAL], deployOptions: {
         stageName: props.config.environment, dataTraceEnabled: false, tracingEnabled: true, throttlingBurstLimit: 2, throttlingRateLimit: 10,
       },
+      ...(configuredCloudflareCidrs ? {
+        disableExecuteApiEndpoint: true,
+        policy: new iam.PolicyDocument({ statements: [
+          new iam.PolicyStatement({ effect: iam.Effect.ALLOW, principals: [new iam.AnyPrincipal()], actions: ['execute-api:Invoke'], resources: ['execute-api:/*'] }),
+          new iam.PolicyStatement({
+            effect: iam.Effect.DENY, principals: [new iam.AnyPrincipal()], actions: ['execute-api:Invoke'], resources: ['execute-api:/*'],
+            conditions: { NotIpAddress: { 'aws:SourceIp': configuredCloudflareCidrs.valueAsList } },
+          }),
+        ] }),
+      } : {}),
     });
     const api5xxAlarm = new cloudwatch.Alarm(this, 'AnalysisApi5xxAlarm', {
       metric: api.metricServerError({ period: Duration.minutes(5), statistic: 'Sum' }), threshold: 1, evaluationPeriods: 1,
@@ -322,7 +356,24 @@ export class AnalysisApiStack extends Stack {
       principal: new iam.ServicePrincipal('apigateway.amazonaws.com'),
       sourceArn: this.formatArn({ service: 'execute-api', resource: api.restApiId, resourceName: 'authorizers/*' }),
     });
-    new CfnOutput(this, 'AnalysisApiUrl', { value: `${api.url}v1/analysis`, description: '認証必須の解析API endpoint' });
+    if (apiDomain && acmCertificateArn && aopTruststoreVersion) {
+      const domain = new apigateway.CfnDomainName(this, 'AnalysisApiDomainName', {
+        domainName: apiDomain,
+        regionalCertificateArn: acmCertificateArn.valueAsString,
+        endpointConfiguration: { types: ['REGIONAL'] },
+        securityPolicy: 'TLS_1_2',
+        mutualTlsAuthentication: {
+          truststoreUri: Fn.join('', ['s3://', Fn.importValue(`fridge-manager-${props.config.environment}-aop-truststore-bucket`), `/aop/${props.config.environment}/truststore.pem`]),
+          truststoreVersion: aopTruststoreVersion.valueAsString,
+        },
+      });
+      new apigateway.CfnBasePathMapping(this, 'AnalysisApiBasePathMapping', {
+        domainName: apiDomain,
+        restApiId: api.restApiId,
+        stage: api.deploymentStage.stageName,
+      }).addDependency(domain);
+    }
+    new CfnOutput(this, 'AnalysisApiUrl', { value: apiDomain ? `https://${apiDomain}/v1/analysis` : `${api.url}v1/analysis`, description: '認証必須の解析API endpoint' });
     new CfnOutput(this, 'FirebaseAuthorizerRoleArn', { value: authorizerRole.roleArn, description: 'Google WIFで許可するFirebase検証Lambda role' });
     new CfnOutput(this, 'AiControlTableName', { value: controlTable.tableName, description: 'AI停止状態の検証用table' });
     new CfnOutput(this, 'AiControlFunctionName', { value: controlFn.functionName, description: '監査付きAI停止・復旧function' });

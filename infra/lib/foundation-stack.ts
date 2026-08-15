@@ -1,7 +1,8 @@
-import { Aspects, Stack, StackProps, Tags } from 'aws-cdk-lib';
+import { Aspects, CfnOutput, Stack, StackProps, Tags } from 'aws-cdk-lib';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 import { EnvironmentConfig } from './environment-config';
 import { LeastPrivilegeIamAspect } from './least-privilege-iam-aspect';
@@ -47,6 +48,26 @@ export class FoundationStack extends Stack {
 
     // 明示的な依存により、ログ削除前に暗号鍵が削除されることを防ぐ。
     logGroup.node.addDependency(encryptionKey);
+
+    if (config.environment !== 'dev') {
+      const truststore = new s3.Bucket(this, 'AopTruststore', {
+        // truststore は公開CA chainだけを置く。CMKで暗号化し、API Gatewayの
+        // バージョン固定参照にも対応する。
+        encryption: s3.BucketEncryption.KMS,
+        encryptionKey,
+        blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+        enforceSSL: true,
+        versioned: true,
+        removalPolicy: config.removalPolicy,
+        autoDeleteObjects: false,
+      });
+      truststore.node.addDependency(encryptionKey);
+      new CfnOutput(this, 'AopTruststoreBucketName', {
+        value: truststore.bucketName,
+        description: 'Cloudflare AOP public CA truststore bucket name',
+        exportName: `fridge-manager-${config.environment}-aop-truststore-bucket`,
+      });
+    }
     Aspects.of(this).add(new LeastPrivilegeIamAspect());
   }
 

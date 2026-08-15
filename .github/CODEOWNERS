@@ -2,4 +2,3 @@
 /.github/scripts/check-npm-audit.mjs @quotto
 /.github/workflows/security.yml @quotto
 /.github/workflows/deploy.yml @quotto
-
