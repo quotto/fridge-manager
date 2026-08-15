@@ -82,6 +82,45 @@ describe('AnalysisApiStack', () => {
     expect(rendered).toContain('BudgetStopDlq');
   });
 
+  it.each([
+    ['stg', 'fridge-manager-stg.wackwack.net'],
+    ['prod', 'fridge-manager.wackwack.net'],
+  ] as const)('%s はmTLS付きRegional custom domainとCloudflare外拒否を構成する', (environment, hostname) => {
+    const stack = new AnalysisApiStack(new App(), `AnalysisApi${environment}`, {
+      config: getEnvironmentConfig(environment),
+    });
+    const scoped = Template.fromStack(stack);
+
+    scoped.hasResourceProperties('AWS::ApiGateway::RestApi', {
+      DisableExecuteApiEndpoint: true,
+      Policy: Match.objectLike({ Statement: Match.arrayWith([
+        Match.objectLike({
+          Effect: 'Deny',
+          Condition: { NotIpAddress: { 'aws:SourceIp': { Ref: 'CloudflareCidrs' } } },
+        }),
+      ]) }),
+    });
+    expect(scoped.toJSON().Parameters).toMatchObject({
+      CloudflareCidrs: { Default: expect.stringContaining('173.245.48.0/20') },
+    });
+    scoped.hasResourceProperties('AWS::ApiGateway::DomainName', {
+      DomainName: hostname,
+      EndpointConfiguration: { Types: ['REGIONAL'] },
+      SecurityPolicy: 'TLS_1_2',
+      RegionalCertificateArn: { Ref: 'AcmCertificateArn' },
+      MutualTlsAuthentication: Match.objectLike({
+        TruststoreUri: Match.anyValue(),
+        TruststoreVersion: { Ref: 'AopTruststoreVersion' },
+      }),
+    });
+    scoped.hasResourceProperties('AWS::ApiGateway::BasePathMapping', {
+      RestApiId: Match.anyValue(),
+      Stage: Match.anyValue(),
+      DomainName: hostname,
+    });
+    scoped.hasOutput('AnalysisApiUrl', { Value: `https://${hostname}/v1/analysis` });
+  });
+
   it('解析・制御LambdaのDynamoDB権限を実使用APIへ限定する', () => {
     const policies = template.findResources('AWS::IAM::Policy');
     const rendered = JSON.stringify(policies);

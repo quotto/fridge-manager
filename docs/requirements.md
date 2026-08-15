@@ -334,7 +334,7 @@ AI の解析結果は必ず候補として扱い、ユーザーが内容を確�
 - 初期利用規模では、常時稼働サーバーを極力避け、従量課金型の構成を優先する。
 - AI 解析は匿名ユーザー ID ごとに 5 回/日かつ 30 回/月、短時間は 2 回/分（burst 2）を上限とする。
 - 日次・月次上限は日本標準時（JST）の暦日・暦月で集計し、日次は毎日 0:00、月次は毎月 1 日 0:00 にリセットする。
-- AWS WAF で送信元 IP ごとに 10 回/分の防御的な上限を併用する。厳密なユーザー別上限はバックエンドの原子的カウンターで判定する。
+- Cloudflare WAF の Rate Limiting Rules で、送信元 IP と API ホスト名ごとに 10 回/分の防御的な上限を併用する。ステージングと本番は単一の Cloudflare アカウントで運用しつつ、ホスト名を集計キーに含めて相互に影響させない。厳密なユーザー別上限はバックエンドの原子的カウンターで判定する。
 - 全ユーザー合計 8,000 回/月を初期のハード上限とし、到達時は AI 解析のみを月初まで停止する。手動在庫管理は継続可能とする。
 - AI 呼び出しを予約した時点で利用回数を計上し、入力不正や上限超過は計上しない。AI 基盤側の障害では予約した回数を戻す。
 - AWS の月次予算上限を 50 USD とし、50% で通知、80% で緊急通知、100% で AI 解析停止を実行する。予算情報の更新遅延があるため、8,000 回/月の同期的な上限を主たる遮断手段とする。
@@ -464,7 +464,7 @@ AI の解析結果は必ず候補として扱い、ユーザーが内容を確�
 - [Amazon Bedrock data retention](https://docs.aws.amazon.com/bedrock/latest/userguide/data-retention.html)
 - [Firebase App Check: custom backend](https://firebase.google.com/docs/app-check/custom-resource-backend)
 - [API Gateway usage plans](https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-api-usage-plans.html)
-- [AWS WAF rate-based rules](https://docs.aws.amazon.com/waf/latest/developerguide/waf-rule-statement-type-rate-based-high-level-settings.html)
+- [Cloudflare Rate Limiting Rules](https://developers.cloudflare.com/waf/rate-limiting-rules/)
 - [AWS Budgets](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-managing-costs.html)
 - [Google Cloud Vision pricing](https://cloud.google.com/vision/pricing)
 - [Amazon Rekognition pricing](https://aws.amazon.com/rekognition/pricing/)
