@@ -63,5 +63,5 @@ for _attempt in {1..24}; do
   sleep 5
 done
 [[ "$certificate_active" == true ]] || { echo 'Cloudflare AOP certificate did not become active before timeout' >&2; exit 1; }
-aws s3 cp "$work_dir/manifest.json" "s3://${truststore_bucket}/aop/${target}/active-manifest.json" --sse AES256 --no-progress >/dev/null
-aws s3 cp "s3://${truststore_bucket}/aop/${target}/pending-ca.pem" "s3://${truststore_bucket}/aop/${target}/active-ca.pem" --sse AES256 --no-progress >/dev/null
+aws s3 cp "$work_dir/manifest.json" "s3://${truststore_bucket}/aop/${target}/active-manifest.json" --no-progress >/dev/null
+aws s3 cp "s3://${truststore_bucket}/aop/${target}/pending-ca.pem" "s3://${truststore_bucket}/aop/${target}/active-ca.pem" --no-progress >/dev/null

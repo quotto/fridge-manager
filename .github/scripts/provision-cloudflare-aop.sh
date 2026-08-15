@@ -76,11 +76,11 @@ else
   cp "$work_dir/ca.pem" "$work_dir/truststore.pem"
 fi
 truststore_key="aop/${target}/truststore.pem"
-aws s3 cp "$work_dir/ca.pem" "s3://${truststore_bucket}/aop/${target}/pending-ca.pem" --sse AES256 --no-progress >/dev/null
-aws s3 cp "$work_dir/truststore.pem" "s3://${truststore_bucket}/${truststore_key}" --sse AES256 --no-progress >/dev/null
+aws s3 cp "$work_dir/ca.pem" "s3://${truststore_bucket}/aop/${target}/pending-ca.pem" --no-progress >/dev/null
+aws s3 cp "$work_dir/truststore.pem" "s3://${truststore_bucket}/${truststore_key}" --no-progress >/dev/null
 truststore_version="$(aws s3api head-object --bucket "$truststore_bucket" --key "$truststore_key" --query VersionId --output text)"
 [[ -n "$truststore_version" && "$truststore_version" != None ]] || { echo 'truststore object version is missing' >&2; exit 1; }
 jq -n --arg hostname "$hostname" --arg certificate_id "$certificate_id" --arg truststore_version "$truststore_version" \
   '{hostname: $hostname, certificate_id: $certificate_id, truststore_version: $truststore_version}' >"$work_dir/manifest.json"
-aws s3 cp "$work_dir/manifest.json" "s3://${truststore_bucket}/aop/${target}/pending-manifest.json" --sse AES256 --no-progress >/dev/null
+aws s3 cp "$work_dir/manifest.json" "s3://${truststore_bucket}/aop/${target}/pending-manifest.json" --no-progress >/dev/null
 printf 'truststore_version=%s\n' "$truststore_version" >>"${GITHUB_OUTPUT:-/dev/null}"

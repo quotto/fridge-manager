@@ -132,6 +132,7 @@ describe('cloud deployment workflow', () => {
     expect(script).toContain('bash .github/scripts/verify-aws-account.sh');
     expect(script).toContain('openssl x509 -req -sha256 -days 89');
     expect(script).not.toContain('origin_tls_client_auth/hostnames"');
+    expect(script).not.toContain('--sse AES256');
   });
 
   it('AOP有効化はAPI GatewayのmTLS配備確認後にのみ実行する', () => {

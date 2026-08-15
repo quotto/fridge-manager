@@ -103,7 +103,7 @@ describe('FoundationStack', () => {
 
     template.hasResourceProperties('AWS::S3::Bucket', {
       BucketEncryption: Match.objectLike({ ServerSideEncryptionConfiguration: Match.arrayWith([
-        Match.objectLike({ ServerSideEncryptionByDefault: { SSEAlgorithm: 'AES256' } }),
+        Match.objectLike({ ServerSideEncryptionByDefault: { SSEAlgorithm: 'aws:kms', KMSMasterKeyID: Match.anyValue() } }),
       ]) }),
       PublicAccessBlockConfiguration: {
         BlockPublicAcls: true,

@@ -51,9 +51,10 @@ export class FoundationStack extends Stack {
 
     if (config.environment !== 'dev') {
       const truststore = new s3.Bucket(this, 'AopTruststore', {
-        // truststore は公開CA chainだけを置く。API Gateway の読取り互換性を
-        // 保ちつつ、S3のサーバー側暗号化を強制する。
-        encryption: s3.BucketEncryption.S3_MANAGED,
+        // truststore は公開CA chainだけを置く。CMKで暗号化し、API Gatewayの
+        // バージョン固定参照にも対応する。
+        encryption: s3.BucketEncryption.KMS,
+        encryptionKey,
         blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
         enforceSSL: true,
         versioned: true,
