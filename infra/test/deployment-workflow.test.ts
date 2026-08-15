@@ -133,6 +133,7 @@ describe('cloud deployment workflow', () => {
     expect(script).toContain('openssl x509 -req -sha256 -days 89');
     expect(script).toContain('Cloudflare AOP certificate upload failed:');
     expect(script).toContain("jq -c '{success, errors: (.errors | map({code, message}))}'");
+    expect(script).toContain('if ! certificate_id="$(jq -er');
     expect(script).not.toContain('origin_tls_client_auth/hostnames"');
     expect(script).not.toContain('--sse AES256');
   });
