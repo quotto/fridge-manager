@@ -32,10 +32,19 @@ EOF
 
 curl --fail-with-body --silent --show-error --config "$work_dir/curl.conf" \
   "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/settings/ssl" >"$work_dir/ssl-setting.json"
-jq -e 'select(.success == true and .result.value == "strict")' "$work_dir/ssl-setting.json" >/dev/null || {
-  echo 'Cloudflare SSL/TLS encryption mode must be Full (strict) before proxying the API DNS record' >&2
-  exit 2
-}
+if ! jq -e 'select(.success == true)' "$work_dir/ssl-setting.json" >/dev/null; then
+  echo 'unable to read Cloudflare SSL/TLS encryption mode' >&2
+  exit 1
+fi
+if ! jq -e 'select(.result.value == "strict")' "$work_dir/ssl-setting.json" >/dev/null; then
+  curl --fail-with-body --silent --show-error --config "$work_dir/curl.conf" --request PATCH \
+    --data '{"value":"strict"}' \
+    "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/settings/ssl" >"$work_dir/ssl-write.json"
+  jq -e 'select(.success == true and .result.value == "strict")' "$work_dir/ssl-write.json" >/dev/null || {
+    echo 'failed to set Cloudflare SSL/TLS encryption mode to Full (strict)' >&2
+    exit 1
+  }
+fi
 
 curl --fail-with-body --silent --show-error --config "$work_dir/curl.conf" --get \
   --data-urlencode "name=${hostname}" \
