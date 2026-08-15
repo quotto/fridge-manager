@@ -119,6 +119,21 @@ describe('FoundationStack', () => {
           Effect: 'Deny',
           Condition: { Bool: { 'aws:SecureTransport': 'false' } },
         }),
+        Match.objectLike({
+          Sid: 'AllowApiGatewayReadMtlsTruststore',
+          Principal: { Service: 'apigateway.amazonaws.com' },
+          Action: 's3:GetObject',
+          Resource: Match.anyValue(),
+        }),
+      ]) }),
+    });
+    template.hasResourceProperties('AWS::KMS::Key', {
+      KeyPolicy: Match.objectLike({ Statement: Match.arrayWith([
+        Match.objectLike({
+          Sid: 'AllowApiGatewayDecryptMtlsTruststore',
+          Principal: { Service: 'apigateway.amazonaws.com' },
+          Action: 'kms:Decrypt',
+        }),
       ]) }),
     });
     template.hasOutput('AopTruststoreBucketName', { Value: Match.anyValue() });

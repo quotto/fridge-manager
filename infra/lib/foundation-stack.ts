@@ -62,6 +62,19 @@ export class FoundationStack extends Stack {
         autoDeleteObjects: false,
       });
       truststore.node.addDependency(encryptionKey);
+      const truststoreObjectArn = truststore.arnForObjects(`aop/${config.environment}/truststore.pem`);
+      truststore.addToResourcePolicy(new iam.PolicyStatement({
+        sid: 'AllowApiGatewayReadMtlsTruststore',
+        principals: [new iam.ServicePrincipal('apigateway.amazonaws.com')],
+        actions: ['s3:GetObject'],
+        resources: [truststoreObjectArn],
+      }));
+      encryptionKey.addToResourcePolicy(new iam.PolicyStatement({
+        sid: 'AllowApiGatewayDecryptMtlsTruststore',
+        principals: [new iam.ServicePrincipal('apigateway.amazonaws.com')],
+        actions: ['kms:Decrypt'],
+        resources: ['*'],
+      }));
       new CfnOutput(this, 'AopTruststoreBucketName', {
         value: truststore.bucketName,
         description: 'Cloudflare AOP public CA truststore bucket name',
