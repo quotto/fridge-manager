@@ -58,6 +58,9 @@ describe('cloud deployment workflow', () => {
     expect(script).toContain('AopTruststoreBucketName');
     expect(script).toContain('AopTruststoreVersion');
     expect(script).toContain('npx cdk deploy "$foundation"');
+    expect(script.indexOf('if [[ "$environment" == stg ]]')).toBeLessThan(script.indexOf('npx cdk deploy "$api_stack"'));
+    expect(script).toContain('--parameters "${api_stack}:AcmCertificateArn=${ACM_CERTIFICATE_ARN}"');
+    expect(script).toContain('--parameters "${api_stack}:AopTruststoreVersion=${aop_truststore_version}"');
     const accountGuard = read('.github/scripts/verify-aws-account.sh');
     expect(accountGuard).toContain('aws sts get-caller-identity');
     expect(accountGuard).toContain('actual_account" == "$AWS_ACCOUNT_ID');
