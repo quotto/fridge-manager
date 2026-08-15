@@ -170,7 +170,7 @@ describe('cloud deployment workflow', () => {
     expect(script).toContain('proxied:true');
     expect(script).toContain('http_ratelimit');
     expect(script).toContain('requests_per_period: 10');
-    expect(script).toContain('characteristics: ["ip.src", "http.host"]');
+    expect(script).toContain('characteristics: ["ip.src", "http.host", "cf.colo.id"]');
     expect(script).toContain('action: "block"');
     expect(script).toContain('action_parameters');
     expect(script).toContain('/rulesets/${ruleset_id}/rules');
