@@ -132,6 +132,8 @@ describe('cloud deployment workflow', () => {
     expect(workflow).not.toContain('set -x');
     expect(workflow).toContain('bash .github/scripts/provision-cloudflare-aop.sh');
     const script = read('.github/scripts/provision-cloudflare-aop.sh');
+    expect(script).toContain('openssl rand -hex 12');
+    expect(script).toContain('ca_common_name=');
     expect(script).toContain('bash .github/scripts/verify-aws-account.sh');
     expect(script).toContain('openssl x509 -req -sha256 -days 89');
     expect(script).toContain("-addext 'basicConstraints=critical,CA:TRUE,pathlen:0'");
