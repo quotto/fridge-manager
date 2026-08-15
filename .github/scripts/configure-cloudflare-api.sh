@@ -90,7 +90,7 @@ rate_expression='http.request.method eq "POST" and http.request.uri.path eq "/v1
 jq -n --arg description "$rate_rule_description" --arg expression "$rate_expression" '
   {description: $description, expression: $expression,
    action: "block", action_parameters: {response: {content: "Too Many Requests", content_type: "text/plain", status_code: 429}},
-   ratelimit: {characteristics: ["ip.src", "http.host", "cf.colo.id"], period: 60, requests_per_period: 10, mitigation_timeout: 60}}' >"$work_dir/rate-rule.json"
+   ratelimit: {characteristics: ["ip.src", "cf.colo.id"], period: 60, requests_per_period: 10, mitigation_timeout: 60}}' >"$work_dir/rate-rule.json"
 
 entrypoint_url="https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/rulesets/phases/http_ratelimit/entrypoint"
 entrypoint_status="$(curl --silent --show-error --config "$work_dir/curl.conf" --output "$work_dir/rate-entrypoint.json" --write-out '%{http_code}' "$entrypoint_url")"

@@ -161,7 +161,7 @@ describe('cloud deployment workflow', () => {
     expect(script).toContain('select(.success == true)');
   });
 
-  it('Cloudflare設定はプロキシDNSと二つのhostnameを分離した単一Rate Limiting ruleを適用する', () => {
+  it('Cloudflare Free設定は両hostnameを対象に単一Rate Limiting ruleを適用する', () => {
     const workflow = read('.github/workflows/configure-cloudflare-api.yml');
     const script = read('.github/scripts/configure-cloudflare-api.sh');
     expect(workflow).toContain('CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}');
@@ -170,7 +170,7 @@ describe('cloud deployment workflow', () => {
     expect(script).toContain('proxied:true');
     expect(script).toContain('http_ratelimit');
     expect(script).toContain('requests_per_period: 10');
-    expect(script).toContain('characteristics: ["ip.src", "http.host", "cf.colo.id"]');
+    expect(script).toContain('characteristics: ["ip.src", "cf.colo.id"]');
     expect(script).toContain('action: "block"');
     expect(script).toContain('action_parameters');
     expect(script).toContain('/rulesets/${ruleset_id}/rules');
