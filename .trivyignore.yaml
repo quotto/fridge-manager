@@ -1,0 +1,10 @@
+# API Gateway の mTLS truststore は公開 CA チェーンだけを保持する。SSE-KMS では
+# API Gateway が S3 オブジェクトを参照できないため、当該 2 リソースに限り SSE-S3 を使用する。
+# 例外は synth 後の truststore テンプレートだけに限定し、次回の運用レビューで更新する。
+misconfigurations:
+  - id: AWS-0132
+    paths:
+      - cdk.out/FridgeManagerStgFoundation.template.json
+      - cdk.out/FridgeManagerProdFoundation.template.json
+    expired_at: 2027-08-15
+    statement: API Gateway mutual TLS truststore only; public CA chain requires SSE-S3 compatibility.
