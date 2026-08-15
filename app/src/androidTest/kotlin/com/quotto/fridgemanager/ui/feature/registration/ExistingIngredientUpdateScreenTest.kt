@@ -2,6 +2,8 @@ package com.quotto.fridgemanager.ui.feature.registration
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.StateRestorationTester
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
@@ -22,23 +24,113 @@ class ExistingIngredientUpdateScreenTest {
     @get:Rule val composeRule = createComposeRule()
 
     @Test
-    fun 数量更新は現在値入力方法更新後値を確認し削除は取消不能を明示する() {
+    fun 既存在庫更新から対象食材を指定して画像解析へ進める() {
+        val repository = UiUpdateRepository(ingredient())
+        var analysisIngredientId: String? = null
+        composeRule.setContent {
+            ExistingIngredientUpdateScreen(
+                ingredientId = "id",
+                presenter = IngredientUpdatePresenter(repository),
+                onBack = {},
+                onChanged = {},
+                onImageAnalysis = { analysisIngredientId = it },
+            )
+        }
+
+        composeRule.onNodeWithText("画像から数量を更新").assertIsDisplayed().performClick()
+        composeRule.runOnIdle { assertEquals("id", analysisIngredientId) }
+    }
+
+    @Test
+    fun 手動更新は置換後の在庫数を直接保存し画像用の増減UIを表示しない() {
+        val repository = UiUpdateRepository(ingredient())
+        var changed = 0
+        composeRule.setContent {
+            ExistingIngredientUpdateScreen(
+                "id",
+                IngredientUpdatePresenter(repository),
+                {},
+                { changed += 1 },
+            )
+        }
+        composeRule.onNodeWithText("現在値: 10 丁").assertIsDisplayed()
+        composeRule.onNodeWithText("増加").assertDoesNotExist()
+        composeRule.onNodeWithText("減少").assertDoesNotExist()
+        composeRule.onNodeWithText("数量更新を確定").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("置換後の在庫数、必須")
+            .performTextReplacement("7.75")
+        composeRule.onNodeWithText("編集内容を確定").performClick()
+        composeRule.waitUntil { changed == 1 }
+        composeRule.runOnIdle {
+            assertEquals("7.75", repository.item?.quantity.toString())
+        }
+    }
+
+    @Test
+    fun 更新画面の単位ボタンは現在値を指定して別画面を要求する() {
+        val repository = UiUpdateRepository(ingredient())
+        var requestedUnit: String? = null
+        composeRule.setContent {
+            ExistingIngredientUpdateScreen(
+                "id",
+                IngredientUpdatePresenter(repository),
+                {},
+                {},
+                onUnitSelection = { requestedUnit = it },
+            )
+        }
+
+        composeRule.onNodeWithContentDescription("単位、必須、現在値は丁").performClick()
+
+        composeRule.runOnIdle { assertEquals("丁", requestedUnit) }
+        composeRule.onNodeWithText("単位を選択").assertDoesNotExist()
+    }
+
+    @Test
+    fun 単位選択画面から返された単位を更新画面へ反映する() {
+        val repository = UiUpdateRepository(ingredient())
+        var consumed = 0
+        composeRule.setContent {
+            ExistingIngredientUpdateScreen(
+                "id",
+                IngredientUpdatePresenter(repository),
+                {},
+                {},
+                selectedUnitResult = "kg",
+                onUnitResultConsumed = { consumed += 1 },
+            )
+        }
+
+        composeRule.onNodeWithContentDescription("単位、必須、現在値はkg").assertIsDisplayed()
+        composeRule.runOnIdle { assertEquals(1, consumed) }
+    }
+
+    @Test
+    fun 単位選択画面との往復後も読込済み在庫を保持する() {
+        val repository = UiUpdateRepository(ingredient())
+        val restorationTester = StateRestorationTester(composeRule)
+        restorationTester.setContent {
+            ExistingIngredientUpdateScreen(
+                "id",
+                IngredientUpdatePresenter(repository),
+                {},
+                {},
+            )
+        }
+        composeRule.onNodeWithContentDescription("単位、必須、現在値は丁").assertIsDisplayed()
+
+        restorationTester.emulateSavedInstanceStateRestore()
+
+        composeRule.onNodeWithContentDescription("単位、必須、現在値は丁").assertIsDisplayed()
+        composeRule.runOnIdle { assertEquals(1, repository.readCount) }
+    }
+
+    @Test
+    fun 削除は取消不能を明示し確認後だけ実行する() {
         val repository = UiUpdateRepository(ingredient())
         composeRule.setContent {
             ExistingIngredientUpdateScreen("id", IngredientUpdatePresenter(repository), {}, {})
         }
-        composeRule.onNodeWithText("現在値: 10 丁").assertIsDisplayed()
-        composeRule.onNodeWithText("減少").performClick()
-        composeRule.onNodeWithText("入力値").performTextReplacement("10.01")
-        composeRule.onNodeWithText("更新後の値を確認").performClick()
-        composeRule.onNodeWithText("更新後の在庫数は0以上100以下で指定してください").assertIsDisplayed()
-        composeRule.onNodeWithText("数量更新を確定").assertDoesNotExist()
-
-        composeRule.onNodeWithText("入力値").performTextReplacement("2.25")
-        composeRule.onNodeWithText("更新後の値を確認").performClick()
-        composeRule.onNodeWithText("現在値 10、減少 2.25、更新後 7.75").assertIsDisplayed()
-        composeRule.onNodeWithText("更新後の在庫数は0以上100以下で指定してください").assertDoesNotExist()
-
         composeRule.onNodeWithText("この食材を削除").performClick()
         composeRule.onNodeWithText("豆腐を削除しますか？").assertIsDisplayed()
         composeRule.onNodeWithText("削除後は取り消し・復元できません。").assertIsDisplayed()
@@ -50,32 +142,16 @@ class ExistingIngredientUpdateScreenTest {
         composeRule.onNodeWithText("削除を確定").performClick()
         composeRule.runOnIdle { assertEquals(1, repository.deleteCount) }
     }
-
-    @Test
-    fun プレビュー時のNotFoundと読込失敗を安全な再試行メッセージへ変換する() {
-        val repository = UiUpdateRepository(ingredient())
-        composeRule.setContent {
-            ExistingIngredientUpdateScreen("id", IngredientUpdatePresenter(repository), {}, {})
-        }
-        composeRule.onNodeWithText("現在値: 10 丁").assertIsDisplayed()
-        repository.item = null
-        composeRule.onNodeWithText("入力値").performTextReplacement("1")
-        composeRule.onNodeWithText("更新後の値を確認").performClick()
-        composeRule.onNodeWithText("対象の在庫が見つかりません。戻って選び直してください").assertIsDisplayed()
-
-        repository.item = ingredient()
-        repository.failReads = true
-        composeRule.onNodeWithText("更新後の値を確認").performClick()
-        composeRule.onNodeWithText("在庫を読み込めませんでした。入力値を保ったまま再試行できます").assertIsDisplayed()
-    }
 }
 
 private class UiUpdateRepository(var item: StoredIngredient?) : InventoryRepository {
     var failReads = false
     var deleteCount = 0
+    var readCount = 0
     override suspend fun hasItems() = item != null
     override suspend fun getAll() = listOfNotNull(item)
     override suspend fun getById(id: String): StoredIngredient? {
+        readCount += 1
         if (failReads) error("secret database detail")
         return item?.takeIf { it.id == id }
     }

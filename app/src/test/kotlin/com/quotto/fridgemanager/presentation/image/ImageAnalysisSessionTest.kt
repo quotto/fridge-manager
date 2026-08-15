@@ -16,6 +16,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.quotto.fridgemanager.domain.analysis.AnalysisApiResult
+import com.quotto.fridgemanager.domain.analysis.AnalysisFailureKind
+import com.quotto.fridgemanager.domain.analysis.AnalysisRequestException
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ImageAnalysisSessionTest {
@@ -43,6 +46,24 @@ class ImageAnalysisSessionTest {
         assertTrue(session.state.value is ImageAnalysisState.Failed); assertFalse(output.file.exists())
     }
 
+    @Test fun `分類済み失敗は同じ画像を保持し明示再試行後に削除する`() = runTest {
+        val output = image(640, 480); var attempts = 0
+        val session = session({ output }) {
+            attempts++
+            if (attempts == 1) throw AnalysisRequestException(
+                AnalysisApiResult.Failure(AnalysisFailureKind.QuotaExceeded, "DAILY", "2026-07-21T15:00:00Z"),
+            )
+        }
+        session.select(asset()); advanceUntilIdle(); session.send(); advanceUntilIdle()
+        val failed = session.state.value as ImageAnalysisState.Failed
+        assertSame(output, failed.image); assertTrue(output.file.exists())
+        assertTrue(failed.retryAt == "2026-07-21T15:00:00Z")
+
+        session.send(); advanceUntilIdle()
+        assertTrue(session.state.value is ImageAnalysisState.Succeeded)
+        assertTrue(attempts == 2); assertFalse(output.file.exists())
+    }
+
     @Test fun `処理失敗を安全なエラーにする`() = runTest {
         val session = session({ error("decode private path") })
         session.select(asset()); advanceUntilIdle()
@@ -62,7 +83,7 @@ class ImageAnalysisSessionTest {
         val output = image(640, 480); val gate = CompletableDeferred<Unit>()
         val session = ImageAnalysisSession<TestAsset>(
             this, StandardTestDispatcher(testScheduler),
-            { withContext(NonCancellable) { gate.await() }; output }, {},
+            { withContext(NonCancellable) { gate.await() }; output }, { _, _ -> null },
         )
         session.select(asset()); runCurrent(); session.cancel(); gate.complete(Unit); advanceUntilIdle()
         assertTrue(session.state.value is ImageAnalysisState.Idle); assertFalse(output.file.exists())
@@ -99,13 +120,26 @@ class ImageAnalysisSessionTest {
         assertTrue(session.state.value is ImageAnalysisState.Idle)
     }
 
+    @Test fun `取消後に分類済み失敗が到着しても成果物を保持しない`() = runTest {
+        val output = image(640, 480); val started = CompletableDeferred<Unit>(); val gate = CompletableDeferred<Unit>()
+        val session = session({ output }) {
+            started.complete(Unit)
+            withContext(NonCancellable) { gate.await() }
+            throw AnalysisRequestException(AnalysisApiResult.Failure(AnalysisFailureKind.ServiceUnavailable))
+        }
+        session.select(asset()); advanceUntilIdle(); session.send(); runCurrent(); started.await()
+        session.cancel(); assertTrue(session.state.value is ImageAnalysisState.Idle)
+        gate.complete(Unit); advanceUntilIdle()
+        assertFalse(output.file.exists()); assertTrue(session.state.value is ImageAnalysisState.Idle)
+    }
+
     private fun TestScope.session(
         process: suspend (TestAsset) -> PreprocessedImage,
         send: suspend (PreprocessedImage) -> Unit = {},
-    ) = ImageAnalysisSession(this, StandardTestDispatcher(testScheduler), process, send)
+    ) = ImageAnalysisSession(this, StandardTestDispatcher(testScheduler), process) { image, _ -> send(image); null }
 
     private fun image(width: Int, height: Int) = PreprocessedImage(
-        File.createTempFile("preview-", ".jpg").apply { writeBytes(byteArrayOf(1, 2, 3)) },
+        File.createTempFile("image-upload-", ".jpg").apply { writeBytes(byteArrayOf(1, 2, 3)) },
         width, height, minOf(width, height) < 480,
     )
     private fun asset() = TestAsset()

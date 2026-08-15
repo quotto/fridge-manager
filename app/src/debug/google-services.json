@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "388716463314",
+    "project_id": "fridge-manager-devstg",
+    "storage_bucket": "fridge-manager-devstg.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:388716463314:android:f7a1fd8718b822f808590b",
+        "android_client_info": {
+          "package_name": "com.quotto.fridgemanager.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCUqfJX6fOuX-tw7Y2XizX8ZfZZ-ONkh04"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

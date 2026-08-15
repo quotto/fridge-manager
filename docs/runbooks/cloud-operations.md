@@ -10,10 +10,17 @@ Issue、対象commit SHA、GitHub Actions run URL、開始・終了時刻、判�
 
 GitHub Environments `staging`、`production-plan`、`production` を作成し、`production` にrequired reviewerを設定する。各Environmentに次のvariableを登録する。
 
+Repository variable `PRODUCTION_DEPLOY_ENABLED` は、stagingの実機能確認とHigh/Critical依存監査の完全成功後に限り `true` とする。それ以外は未設定または `false` を維持する。production-planはこの変数に加えて例外なしの `npm audit --audit-level=high` を再実行し、期限付きdev/stg例外が残る間はproductionへ進まない。
+
+production deployの完了・中止・失敗後は `PRODUCTION_DEPLOY_ENABLED` を直ちに `false` へ戻し、Repository variablesとworkflow runで停止を確認する。期限付き例外の失効でSecurity workflowが失敗した場合は #88 を再開し、例外を延長せず修正版CDKの有無を再評価する。
+
 - `AWS_DEPLOY_ROLE_ARN`, `AWS_PLAN_ROLE_ARN`, `AWS_OPERATIONS_ROLE_ARN`, `PROMOTION_ARTIFACT_BUCKET`
 - `FIREBASE_PROJECT_ID`, `FIREBASE_PROJECT_NUMBER`, `FIREBASE_APP_IDS`
-- `GOOGLE_WIF_AUDIENCE`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `BUDGET_NOTIFICATION_EMAIL`, `ACM_CERTIFICATE_ARN`
-- `CLOUDFLARE_ZONE_ID`
+- `GOOGLE_WIF_AUDIENCE`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`
+- Secret: `OPERATIONS_NOTIFICATION_EMAIL`
+
+`OPERATIONS_NOTIFICATION_EMAIL` にはAWSアカウントで確認済みの既存予算通知先を再利用し、Repository variableやログへ値を出さない。アプリstackは要件固有の50/80/100%予算通知、Cost Anomaly、DLQ、API/Lambda障害をこの通知先へ送り、100%時は自動停止も実行する。SNSの購読確認メールが届いた場合は、各環境の購読を承認する。
+- `CLOUDFLARE_ZONE_ID`, `ACM_CERTIFICATE_ARN`
 
 同じEnvironmentのsecretとして `CLOUDFLARE_API_TOKEN`（Zone DNS / WAF編集およびSSL/TLS mode参照）と `CLOUDFLARE_AOP_TOKEN`（Origin CA証明書編集）を登録する。前者にはZone Settings Readを追加し、Cloudflare zoneのSSL/TLS encryption modeを事前に `Full (strict)` にする。両トークンは用途別に分離し、値、証明書秘密鍵、Cloudflare API応答をActionsログやIssueへ出力しない。
 
@@ -49,6 +56,8 @@ GitHub artifact保持は90日であるため、prod稼働中の現行・既知�
 CA/leaf証明書の有効期間は短いため、60日ごと、かつ期限の14日前までに同じ順序で更新する。更新では新旧CAを束ねたpending truststore versionを先にAPI Gatewayへ配備し、AOP有効化後に新CAだけをactiveとして記録するため、旧leafを先に拒否しない。障害時はCloudflare DNSを一時的にDNS onlyへ切り替えるのではなく、既知良好なCA versionへCloudFormation rollbackし、AOPをその証明書IDへ再関連付けする。mTLSを無効化して復旧しない。
 
 Cloudflare公開IP CIDRは更新されうる。変更検知を運用監視へ追加するまでは、各月次運用とCloudflare障害時に公式IP一覧との差分を確認し、差分があればIssueを起票してAPI Gateway resource policyのallowlistを更新・stg検証してからprodへ昇格する。
+
+API Gatewayの60秒quota反映までは、dev/stgのintegration timeoutをデフォルト上限29秒へ暫定設定し、prodは60秒を維持する。29秒超ではクライアントが失敗してもLambdaが最大58秒まで継続し、費用が発生し得る。quota反映後はdev/stgを60秒へ戻してsynth diffとstaging smokeを再実行する。stg API stackが`ROLLBACK_COMPLETE`の場合、deploy scriptはその失敗stackだけを削除して再作成し、foundationとprodは削除しない。
 
 ## ロールバック
 

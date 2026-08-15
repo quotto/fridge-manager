@@ -2,6 +2,9 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.google.services)
+    alias(libs.plugins.firebase.crashlytics)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 ksp {
@@ -46,6 +49,12 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+
+    val analysisApiBaseUrl = providers.gradleProperty("ANALYSIS_API_BASE_URL").orElse("")
+    defaultConfig {
+        buildConfigField("String", "ANALYSIS_API_BASE_URL", "\"${analysisApiBaseUrl.get().replace("\\", "\\\\").replace("\"", "\\\"")}\"")
     }
 
     testOptions {
@@ -69,11 +78,18 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.exifinterface)
+    implementation(libs.androidx.work.runtime)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.auth)
+    implementation(libs.firebase.crashlytics)
+    implementation(libs.kotlinx.serialization.json)
 
     ksp(libs.androidx.room.compiler)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    debugImplementation(libs.firebase.appcheck.debug)
+    releaseImplementation(libs.firebase.appcheck.playintegrity)
 
     testImplementation(libs.junit4)
     testImplementation(libs.kotlinx.coroutines.test)

@@ -7,13 +7,19 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import com.quotto.fridgemanager.data.local.EmptyInventoryRepository
 import com.quotto.fridgemanager.di.DefaultAppContainer
 import com.quotto.fridgemanager.domain.inventory.InventoryRepository
+import com.quotto.fridgemanager.domain.inventory.InventoryBatch
+import com.quotto.fridgemanager.domain.inventory.StoredIngredient
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -37,7 +43,7 @@ class FridgeManagerAppTest {
 
         composeRule.onNodeWithText("在庫一覧").assertIsDisplayed()
         composeRule.onNodeWithText("食材がありません").assertIsDisplayed()
-        composeRule.onNodeWithText("手動で登録").performClick()
+        composeRule.onNodeWithContentDescription("食材を追加").performClick()
         composeRule.onNodeWithText("手動登録").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("在庫一覧タブ").assertIsSelected()
     }
@@ -46,7 +52,8 @@ class FridgeManagerAppTest {
     fun 空の在庫一覧から画像解析へ遷移できる() {
         launchApp()
 
-        composeRule.onNodeWithText("画像から登録").performClick()
+        composeRule.onNodeWithContentDescription("画像解析タブ").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("画像から食材を登録").performClick()
         composeRule.onNodeWithText("画像解析").assertIsDisplayed()
     }
 
@@ -55,14 +62,14 @@ class FridgeManagerAppTest {
         launchApp()
 
         composeRule.onNodeWithContentDescription("設定タブ").performClick().assertIsSelected()
-        composeRule.onNodeWithText("利用データの削除").assertIsDisplayed()
+        composeRule.onNodeWithText("利用データの削除").performScrollTo().assertIsDisplayed()
     }
 
     @Test
     fun 手動登録から在庫一覧へ戻れる() {
         launchApp()
 
-        composeRule.onNodeWithText("手動で登録").performClick()
+        composeRule.onNodeWithContentDescription("食材を追加").performClick()
         composeRule.onNodeWithContentDescription("在庫一覧へ戻る").performClick()
         composeRule.onNodeWithText("食材がありません").assertIsDisplayed()
     }
@@ -80,8 +87,19 @@ class FridgeManagerAppTest {
             }
         }
 
-        composeRule.onNodeWithText("手動で登録").assertIsDisplayed().assertHasClickAction()
-        composeRule.onNodeWithText("画像から登録").assertIsDisplayed().assertHasClickAction()
+        composeRule.onNodeWithContentDescription("食材を追加")
+            .assertIsDisplayed()
+            .assertHasClickAction()
+            .performClick()
+        composeRule.onNodeWithContentDescription("単位、必須、現在値は個")
+            .assertIsDisplayed()
+            .performClick()
+        composeRule.onNodeWithText("単位を選択").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("単位 kg").performClick()
+        composeRule.onNodeWithContentDescription("単位、必須、現在値はkg").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("単位、必須、現在値はkg").performClick()
+        composeRule.onNodeWithContentDescription("単位選択から戻る").performClick()
+        composeRule.onNodeWithContentDescription("単位、必須、現在値はkg").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("設定タブ").assertIsDisplayed()
     }
 
@@ -108,5 +126,72 @@ class FridgeManagerAppTest {
         composeRule.onNodeWithText("再試行").performClick()
         composeRule.onNodeWithText("食材がありません").assertIsDisplayed()
         composeRule.runOnIdle { assertEquals(2, attempts) }
+    }
+
+    @Test
+    fun オフラインのローカル在庫で登録更新削除を完走できる() {
+        val repository = MutableInventoryRepository()
+        composeRule.setContent {
+            FridgeManagerApp(container = DefaultAppContainer(repository))
+        }
+
+        composeRule.onNodeWithContentDescription("食材を追加").performClick()
+        composeRule.onNodeWithContentDescription("食材名、必須").performTextInput("豆腐")
+        composeRule.onNodeWithContentDescription("在庫数、必須").performTextInput("10")
+        composeRule.onNodeWithContentDescription("単位、必須、現在値は個").performScrollTo().performClick()
+        composeRule.onNodeWithContentDescription("単位 丁").performClick()
+        composeRule.onNodeWithText("新規登録").performScrollTo().performClick()
+
+        composeRule.waitUntil(3_000) {
+            runCatching {
+                composeRule.onNodeWithContentDescription("豆腐、数量 10 丁、在庫あり、編集")
+                    .assertIsDisplayed()
+            }.isSuccess
+        }
+        composeRule.onNodeWithContentDescription("豆腐、数量 10 丁、在庫あり、編集").performClick()
+        composeRule.onNodeWithContentDescription("置換後の在庫数、必須").performTextReplacement("7.5")
+        composeRule.onNodeWithText("編集内容を確定").performScrollTo().performClick()
+        composeRule.waitUntil(3_000) {
+            runCatching {
+                composeRule.onNodeWithContentDescription("豆腐、数量 7.5 丁、在庫あり、編集")
+                    .assertIsDisplayed()
+            }.isSuccess
+        }
+
+        composeRule.onNodeWithContentDescription("豆腐、数量 7.5 丁、在庫あり、編集").performClick()
+        composeRule.onNodeWithText("この食材を削除").performScrollTo().performClick()
+        composeRule.onNodeWithText("削除を確定").performClick()
+        composeRule.onNodeWithText("食材がありません").assertIsDisplayed()
+    }
+}
+
+private class MutableInventoryRepository : InventoryRepository {
+    private val items = MutableStateFlow<List<StoredIngredient>>(emptyList())
+
+    override suspend fun hasItems() = items.value.isNotEmpty()
+    override suspend fun getAll() = items.value
+    override fun observeAll(): Flow<List<StoredIngredient>> = items
+    override suspend fun searchByName(normalizedQuery: String) =
+        items.value.filter { it.name.normalizedValue.contains(normalizedQuery) }
+
+    override suspend fun saveBatch(batch: InventoryBatch) {
+        items.value = batch.items.mapIndexed { index, draft ->
+            StoredIngredient(
+                id = "local-$index",
+                name = draft.name,
+                quantity = draft.quantity,
+                unit = draft.unit,
+                createdAtEpochMillis = 1,
+                updatedAtEpochMillis = 1,
+            )
+        }
+    }
+
+    override suspend fun update(ingredient: StoredIngredient) {
+        items.value = items.value.map { if (it.id == ingredient.id) ingredient else it }
+    }
+
+    override suspend fun delete(ingredient: StoredIngredient) {
+        items.value = items.value.filterNot { it.id == ingredient.id }
     }
 }

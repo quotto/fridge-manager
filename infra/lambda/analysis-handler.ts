@@ -38,6 +38,12 @@ export class AnalysisError extends Error {
   }
 }
 
+/** 保持条件を確認できず、実モデルを一度も呼ばずに停止したことを内部だけへ伝える。 */
+export class ProviderPreflightError extends AnalysisError {
+  public readonly providerCalled = false;
+  public constructor() { super('PROVIDER_UNAVAILABLE', 503); }
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const QUANTITY = /^(?:(?:0|[1-9][0-9]?)(?:\.[0-9]{1,2})?|100)$/;
@@ -47,6 +53,13 @@ addFormats(ajv);
 ajv.addSchema(candidateSchema);
 const validateRequestSchema = ajv.compile(requestSchema);
 const validateResponseSchema = ajv.compile(responseSchema);
+
+function containsControlCharacter(value: string): boolean {
+  return [...value].some((character) => {
+    const codePoint = character.codePointAt(0);
+    return codePoint !== undefined && (codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f));
+  });
+}
 
 function ownKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
   return Object.keys(value).every((key) => allowed.includes(key));
@@ -79,6 +92,7 @@ function parseRequest(body: string | null | undefined): AnalysisRequest {
       const candidate = item as Record<string, unknown>;
       if (!ownKeys(candidate, ['name', 'quantity', 'unit']) || typeof candidate.name !== 'string' ||
           candidate.name.trim().length < 1 || [...candidate.name.trim()].length > 30 ||
+          containsControlCharacter(candidate.name) ||
           typeof candidate.quantity !== 'string' || !QUANTITY.test(candidate.quantity) ||
           typeof candidate.unit !== 'string' || !UNITS.has(candidate.unit)) throw new AnalysisError('INVALID_REQUEST', 400);
     }
@@ -134,11 +148,12 @@ export function createAnalysisHandler(deps: { readonly provider: AnalysisProvide
     let providerCalled = false;
     const execute = async (): Promise<APIGatewayProxyStructuredResultV2> => {
     const rawAuthorizer = event.requestContext.authorizer;
+    console.log(JSON.stringify(rawAuthorizer));
     const outer = rawAuthorizer && typeof rawAuthorizer === 'object' ? rawAuthorizer as Record<string, unknown> : undefined;
     const nested = outer?.lambda;
     const auth = (nested && typeof nested === 'object' ? nested : outer) as Record<string, unknown> | undefined;
     const correlationId = event.requestContext.requestId;
-    if (auth?.firebaseVerified !== true || auth.appCheckVerified !== true || typeof auth.userId !== 'string' || auth.userId.length === 0) return response(401, correlationId, 'UNAUTHORIZED');
+    if (auth?.firebaseVerified !== 'true' || auth.appCheckVerified !== 'true' || typeof auth.userId !== 'string' || auth.userId.length === 0) return response(401, correlationId, 'UNAUTHORIZED');
     const contentType = Object.entries(event.headers).find(([key]) => key.toLowerCase() === 'content-type')?.[1];
     if (contentType?.split(';')[0]?.trim().toLowerCase() !== 'application/json') return response(415, event.requestContext.requestId, 'INVALID_REQUEST');
     let request: AnalysisRequest;
@@ -188,6 +203,7 @@ export function createAnalysisHandler(deps: { readonly provider: AnalysisProvide
         await deps.idempotencyStore.abandon(`${userHash}#${request.requestId}`, hash).catch(() => undefined);
       }
       const typed = error instanceof AnalysisError ? error : new AnalysisError('INTERNAL_ERROR', 500);
+      if (typed instanceof ProviderPreflightError) providerCalled = false;
       return response(typed.statusCode, request.requestId, typed.code, typed.retryAt, undefined, typed.quotaType);
     }
     };

@@ -19,6 +19,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Construct } from 'constructs';
 import { EnvironmentConfig } from './environment-config';
+import { loadBedrockModelPolicy } from './bedrock-model-policy';
 
 export interface AnalysisApiStackProps extends StackProps { readonly config: EnvironmentConfig; }
 
@@ -50,6 +51,11 @@ function apiGatewaySchema(value: unknown): unknown {
       if (child.includes('null')) result.nullable = true;
       continue;
     }
+    if (key === 'enum' && Array.isArray(child) && child.includes(null)) {
+      result.enum = child.filter((item) => item !== null).map(apiGatewaySchema);
+      result.nullable = true;
+      continue;
+    }
     result[key] = apiGatewaySchema(child);
   }
   const definitions = (value as Record<string, unknown>).$defs;
@@ -78,6 +84,8 @@ export class AnalysisApiStack extends Stack {
     const configuredCloudflareCidrs = apiDomain
       ? new CfnParameter(this, 'CloudflareCidrs', { type: 'CommaDelimitedList', default: cloudflareCidrs.join(',') })
       : undefined;
+    // synth/deploy時に公式証跡の内容と期限を検証し、古い自己申告値でのデプロイを拒否する。
+    const bedrockPolicy = loadBedrockModelPolicy();
     const table = new dynamodb.Table(this, 'AnalysisIdempotency', {
       partitionKey: { name: 'requestId', type: dynamodb.AttributeType.STRING },
       timeToLiveAttribute: 'expiresAt', encryption: dynamodb.TableEncryption.AWS_MANAGED,
@@ -105,7 +113,7 @@ export class AnalysisApiStack extends Stack {
     const dailyQuotaLimit = new CfnParameter(this, 'DailyQuotaLimit', { type: 'Number', default: 5, minValue: 1 });
     const monthlyQuotaLimit = new CfnParameter(this, 'MonthlyQuotaLimit', { type: 'Number', default: 30, minValue: 1 });
     const globalQuotaLimit = new CfnParameter(this, 'GlobalQuotaLimit', { type: 'Number', default: 8000, minValue: 1 });
-    const budgetNotificationEmail = new CfnParameter(this, 'BudgetNotificationEmail', { type: 'String', allowedPattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$' });
+    const operationsNotificationEmail = new CfnParameter(this, 'OperationsNotificationEmail', { type: 'String', allowedPattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$' });
     const anomalyThresholdUsd = new CfnParameter(this, 'AnomalyThresholdUsd', { type: 'Number', default: 5, minValue: 1 });
     const logKey = new kms.Key(this, 'ApplicationLogKey', {
       enableKeyRotation: true, removalPolicy: props.config.removalPolicy, alias: `alias/fridge-manager-${props.config.environment}-logs`,
@@ -148,7 +156,7 @@ export class AnalysisApiStack extends Stack {
       functionName: `fridge-manager-${props.config.environment}-analysis`, logGroup: analysisLogGroup, role: lambdaRole('Analysis', analysisLogGroup),
       entry: resolve('infra/lambda/index.ts'), handler: 'main', runtime: lambda.Runtime.NODEJS_22_X,
       timeout: Duration.seconds(58), memorySize: 1024,
-      reservedConcurrentExecutions: 5,
+      ...(props.config.environment === 'prod' ? { reservedConcurrentExecutions: 5 } : {}),
       environment: {
         IDEMPOTENCY_TABLE_NAME: table.tableName,
         QUOTA_SHORT_LIMIT: shortQuotaLimit.valueAsString,
@@ -157,6 +165,9 @@ export class AnalysisApiStack extends Stack {
         QUOTA_GLOBAL_LIMIT: globalQuotaLimit.valueAsString,
         CONTROL_TABLE_NAME: controlTable.tableName,
         ENVIRONMENT: props.config.environment,
+        BEDROCK_REGION: bedrockPolicy.region,
+        BEDROCK_MODEL_ID: bedrockPolicy.modelId,
+        BEDROCK_MODEL_ALLOWED_MODES: bedrockPolicy.allowedModes.join(','),
       },
       bundling: { minify: true, sourceMap: true },
     });
@@ -165,6 +176,18 @@ export class AnalysisApiStack extends Stack {
       resources: [table.tableArn],
     }));
     fn.addToRolePolicy(new iam.PolicyStatement({ actions: ['dynamodb:GetItem'], resources: [controlTable.tableArn] }));
+    const inferenceProfileArn = `arn:${this.partition}:bedrock:${bedrockPolicy.region}:${this.account}:inference-profile/${bedrockPolicy.modelId}`;
+    fn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock:InvokeModel'],
+      resources: [inferenceProfileArn],
+    }));
+    fn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock:InvokeModel'],
+      resources: bedrockPolicy.destinationRegions.map((region) => `arn:${this.partition}:bedrock:${region}::foundation-model/${bedrockPolicy.foundationModelId}`),
+      conditions: { StringEquals: { 'bedrock:InferenceProfileArn': inferenceProfileArn } },
+    }));
+    // GetAccountDataRetentionはresource-level permissionをサポートしない。
+    fn.addToRolePolicy(new iam.PolicyStatement({ actions: ['bedrock:GetAccountDataRetention'], resources: ['*'] }));
 
     const controlFn = new nodejs.NodejsFunction(this, 'AiControlHandler', {
       functionName: `fridge-manager-${props.config.environment}-control`, logGroup: controlLogGroup, role: lambdaRole('Control', controlLogGroup),
@@ -194,8 +217,8 @@ export class AnalysisApiStack extends Stack {
       conditions: { StringEquals: { 'aws:SourceAccount': this.account }, ArnLike: { 'aws:SourceArn': stopTopic.topicArn } },
     }));
     const stopDlq = new sqs.Queue(this, 'BudgetStopDlq', { encryption: sqs.QueueEncryption.KMS, encryptionMasterKey: dlqKey, retentionPeriod: Duration.days(14) });
-    alertTopic.addSubscription(new subscriptions.EmailSubscription(budgetNotificationEmail.valueAsString));
-    stopTopic.addSubscription(new subscriptions.EmailSubscription(budgetNotificationEmail.valueAsString));
+    alertTopic.addSubscription(new subscriptions.EmailSubscription(operationsNotificationEmail.valueAsString));
+    stopTopic.addSubscription(new subscriptions.EmailSubscription(operationsNotificationEmail.valueAsString));
     stopTopic.addSubscription(new subscriptions.LambdaSubscription(controlFn, { deadLetterQueue: stopDlq }));
     const budgetStopDlqAlarm = new cloudwatch.Alarm(this, 'BudgetStopDlqAlarm', {
       metric: stopDlq.metricApproximateNumberOfMessagesVisible(), threshold: 1, evaluationPeriods: 1,
@@ -222,7 +245,7 @@ export class AnalysisApiStack extends Stack {
     const anomalyMonitor = new ce.CfnAnomalyMonitor(this, 'CostAnomalyMonitor', { monitorName: `fridge-manager-${props.config.environment}`, monitorType: 'DIMENSIONAL', monitorDimension: 'SERVICE' });
     const anomalySubscription = new ce.CfnAnomalySubscription(this, 'CostAnomalySubscription', {
       subscriptionName: `fridge-manager-${props.config.environment}`, frequency: 'IMMEDIATE', monitorArnList: [anomalyMonitor.attrMonitorArn],
-      subscribers: [{ type: 'SNS', address: alertTopic.topicArn }], thresholdExpression: JSON.stringify({ And: [{ Dimensions: { Key: 'ANOMALY_TOTAL_IMPACT_ABSOLUTE', MatchOptions: ['GREATER_THAN_OR_EQUAL'], Values: [anomalyThresholdUsd.valueAsString] } }] }),
+      subscribers: [{ type: 'SNS', address: alertTopic.topicArn }], thresholdExpression: JSON.stringify({ Dimensions: { Key: 'ANOMALY_TOTAL_IMPACT_ABSOLUTE', MatchOptions: ['GREATER_THAN_OR_EQUAL'], Values: [anomalyThresholdUsd.valueAsString] } }),
     });
     if (costPolicyResult.policyDependable) anomalySubscription.node.addDependency(costPolicyResult.policyDependable);
 
@@ -234,6 +257,10 @@ export class AnalysisApiStack extends Stack {
     const serviceFailures = metric('Requests', 'Sum', { Environment: props.config.environment, Outcome: 'SERVICE_FAILURE' });
     const quotaRejects = metric('Requests', 'Sum', { Environment: props.config.environment, Outcome: 'QUOTA_REJECT' });
     const latencyP95 = metric('Latency', 'p95');
+    const providerUsageDimensions = { Environment: props.config.environment, ModelId: bedrockPolicy.modelId };
+    const inputTokens = metric('InputTokens', 'Sum', providerUsageDimensions);
+    const outputTokens = metric('OutputTokens', 'Sum', providerUsageDimensions);
+    const providerCallsByModel = metric('ProviderCalls', 'Sum', providerUsageDimensions);
     const coreAlarm = new cloudwatch.Alarm(this, 'CoreAvailabilityAlarm', {
       metric: availability, threshold: 99, comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
       evaluationPeriods: 12, datapointsToAlarm: 6, treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
@@ -258,6 +285,7 @@ export class AnalysisApiStack extends Stack {
       }, label: '30-day availability %', period: Duration.days(30) })], leftYAxis: { min: 98, max: 100 } })],
       [new cloudwatch.GraphWidget({ title: 'Latency p95', left: [latencyP95] }), new cloudwatch.GraphWidget({ title: 'Errors / quota / provider', left: [serviceFailures, providerFailures, quotaRejects] })],
       [new cloudwatch.GraphWidget({ title: 'AI call usage', left: [metric('ProviderCalls')] }), new cloudwatch.AlarmWidget({ title: 'Cost / stop delivery', alarm: budgetStopDlqAlarm })],
+      [new cloudwatch.GraphWidget({ title: 'AI token usage', left: [inputTokens, outputTokens], right: [providerCallsByModel] })],
       [new cloudwatch.GraphWidget({ title: 'Lambda Errors / Throttles', left: [fn.metricErrors(), fn.metricThrottles()] })],
       [new cloudwatch.TextWidget({ markdown: `## Cost controls / SLO definition\nMonthly Budget: 50 USD (50/80/100%) · Cost Anomaly threshold parameter · Global cap: 8,000/month JST. Dashboard availability is a 30-day rolling indicator; the calendar-month SLO is evaluated separately.`, width: 24, height: 3 })],
     ] as unknown as cloudwatch.IWidget[][];
@@ -274,6 +302,7 @@ export class AnalysisApiStack extends Stack {
     if (!post) throw new Error('OpenAPIにPOST /v1/analysisがありません');
     components.securitySchemes = { FirebaseAuthorizer: {
       type: 'apiKey', name: 'Authorization', in: 'header',
+      'x-amazon-apigateway-authtype': 'custom',
       'x-amazon-apigateway-authorizer': {
         type: 'request', authorizerResultTtlInSeconds: 0,
         identitySource: 'method.request.header.Authorization,method.request.header.X-Firebase-AppCheck',
@@ -282,7 +311,7 @@ export class AnalysisApiStack extends Stack {
     } };
     post.security = [{ FirebaseAuthorizer: [] }];
     post['x-amazon-apigateway-integration'] = {
-      type: 'aws_proxy', httpMethod: 'POST', timeoutInMillis: 60000,
+      type: 'aws_proxy', httpMethod: 'POST', timeoutInMillis: props.config.apiIntegrationTimeoutMillis,
       uri: `arn:${this.partition}:apigateway:${this.region}:lambda:path/2015-03-31/functions/${fn.functionArn}/invocations`,
     };
     const api = new apigateway.SpecRestApi(this, 'AnalysisApi', {

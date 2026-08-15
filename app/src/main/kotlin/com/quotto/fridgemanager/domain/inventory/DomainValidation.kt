@@ -7,6 +7,7 @@ enum class DomainErrorCode {
     INVALID_QUANTITY,
     QUANTITY_OUT_OF_RANGE,
     UNKNOWN_UNIT,
+    BATCH_EMPTY,
     BATCH_TOO_LARGE,
     DUPLICATE_NAME,
 }

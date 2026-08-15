@@ -2,6 +2,8 @@ package com.quotto.fridgemanager.ui.feature.registration
 
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -29,6 +31,7 @@ class RegistrationScreenTest {
     fun form_exposesRequiredFieldsAndPreventsNewSaveForExactMatch() {
         val existing = storedIngredient()
         var selectedId: String? = null
+        var requestedUnit: String? = null
         composeRule.setContent {
             FridgeManagerTheme {
                 RegistrationContent(
@@ -38,7 +41,9 @@ class RegistrationScreenTest {
                         selectedUnitSymbol = "丁",
                         suggestions = listOf(IngredientSuggestion(existing, true)),
                     ),
-                    onNameChange = {}, onQuantityChange = {}, onUnitChange = {}, onSubmit = {},
+                    onNameChange = {}, onQuantityChange = {}, onUnitSelection = {
+                        requestedUnit = it
+                    }, onSubmit = {},
                     onSelectExisting = { selectedId = it.id },
                 )
             }
@@ -46,9 +51,39 @@ class RegistrationScreenTest {
 
         composeRule.onNodeWithContentDescription("食材名、必須").assertTextContains("豆腐")
         composeRule.onNodeWithContentDescription("在庫数、必須").assertTextContains("1")
+        composeRule.onNodeWithContentDescription("単位、必須、現在値は丁").performClick()
+        composeRule.runOnIdle { assertEquals("丁", requestedUnit) }
+        composeRule.onNodeWithText("単位を選択").assertDoesNotExist()
         composeRule.onNodeWithText("新規登録").assertIsNotEnabled()
-        composeRule.onNodeWithText("豆腐の在庫を更新").performClick()
+        composeRule.onNodeWithText("登録済みの食材です。ここから更新してください。").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("豆腐、現在の在庫は1丁、登録済み、タップして更新")
+            .performClick()
         assertEquals("stored", selectedId)
+    }
+
+    @Test
+    fun unit_button_requestsSeparateSelectionScreenWithCurrentValue() {
+        var requestedUnit: String? = null
+        composeRule.setContent {
+            FridgeManagerTheme {
+                RegistrationContent(
+                    state = RegistrationFormState(
+                        name = "りんご",
+                        quantity = "1",
+                        selectedUnitSymbol = "個",
+                    ),
+                    onNameChange = {},
+                    onQuantityChange = {},
+                    onUnitSelection = { requestedUnit = it },
+                    onSubmit = {},
+                    onSelectExisting = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("単位、必須、現在値は個").performClick()
+        composeRule.runOnIdle { assertEquals("個", requestedUnit) }
+        composeRule.onNodeWithText("単位を選択").assertDoesNotExist()
     }
 
     @Test

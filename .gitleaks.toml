@@ -1,0 +1,22 @@
+[extend]
+useDefault = true
+
+[[rules]]
+id = "gcp-api-key"
+
+[[rules.allowlists]]
+description = "Firebase Android SDK config contains documented non-secret GCP client API keys"
+paths = [
+  '''app/src/debug/google-services\.json''',
+  '''app/src/release/google-services\.json''',
+]
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Firebase Android SDK config contains documented non-secret client API keys"
+paths = [
+  '''app/src/debug/google-services\.json''',
+  '''app/src/release/google-services\.json''',
+]

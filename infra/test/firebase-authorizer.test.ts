@@ -47,7 +47,6 @@ describe('Firebase Lambda authorizer', () => {
   it.each([
     ['audience改ざんApp Check', { ...validApp, aud: ['projects/999999'] }, 'INVALID_APP_CHECK_TOKEN'],
     ['issuer改ざんApp Check', { ...validApp, iss: 'https://attacker.invalid' }, 'INVALID_APP_CHECK_TOKEN'],
-    ['期限切れApp Check', { ...validApp, exp: now }, 'INVALID_APP_CHECK_TOKEN'],
     ['未来発行App Check', { ...validApp, iat: now + 1 }, 'INVALID_APP_CHECK_TOKEN'],
     ['許可外app ID', { ...validApp, appId: '1:123456789012:android:other' }, 'INVALID_APP_CHECK_TOKEN'],
     ['再利用limited-use token', { ...validApp, alreadyConsumed: true }, 'REPLAYED_APP_CHECK_TOKEN'],
@@ -55,6 +54,16 @@ describe('Firebase Lambda authorizer', () => {
     const { authorizer, auditor } = fixture({ verifyAndConsumeAppCheckToken: jest.fn().mockResolvedValue(decoded) });
     await expect(authorizer(event())).rejects.toThrow('Unauthorized');
     expect(auditor.record).toHaveBeenCalledWith({ code, requestId: 'request-correlation-id' });
+  });
+
+  it('期限切れApp Checkを拒否し専用コードで監査する', async () => {
+    const { authorizer, auditor } = fixture({
+      verifyAndConsumeAppCheckToken: jest.fn().mockResolvedValue({ ...validApp, exp: now }),
+    });
+
+    await expect(authorizer(event())).rejects.toThrow('Unauthorized');
+
+    expect(auditor.record).toHaveBeenCalledWith({ code: 'EXPIRED_APP_CHECK_TOKEN', requestId: 'request-correlation-id' });
   });
 
   it('署名検証失敗を拒否しtoken本文を監査へ渡さない', async () => {
@@ -92,6 +101,21 @@ describe('Firebase Lambda authorizer', () => {
     await expect(authorizer(event())).rejects.toThrow('Unauthorized');
 
     expect(auditor.record).toHaveBeenCalledWith({ code: 'INVALID_APP_CHECK_TOKEN', requestId: 'request-correlation-id' });
+    expect(JSON.stringify((auditor.record as jest.Mock).mock.calls)).not.toContain('app.token.value');
+  });
+
+  it('Google OAuth credential取得失敗をApp Check token不正と区別して監査する', async () => {
+    const credentialError = Object.assign(
+      new Error('Credential implementation failed to fetch an OAuth token for app.token.value'),
+      { code: 'app/invalid-credential' },
+    );
+    const { authorizer, auditor } = fixture({
+      verifyAndConsumeAppCheckToken: jest.fn().mockRejectedValue(credentialError),
+    });
+
+    await expect(authorizer(event())).rejects.toThrow('Unauthorized');
+
+    expect(auditor.record).toHaveBeenCalledWith({ code: 'GOOGLE_CREDENTIAL_FAILURE', requestId: 'request-correlation-id' });
     expect(JSON.stringify((auditor.record as jest.Mock).mock.calls)).not.toContain('app.token.value');
   });
 

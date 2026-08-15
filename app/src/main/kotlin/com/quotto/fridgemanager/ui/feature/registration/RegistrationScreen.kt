@@ -6,17 +6,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,7 +36,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.quotto.fridgemanager.domain.inventory.InventoryUnit
 import com.quotto.fridgemanager.presentation.registration.RegistrationField
 import com.quotto.fridgemanager.presentation.registration.RegistrationFormState
 import com.quotto.fridgemanager.presentation.registration.RegistrationPresenter
@@ -53,9 +51,18 @@ fun RegistrationScreen(
     onBack: () -> Unit,
     onSaved: () -> Unit,
     onEditIngredient: (String) -> Unit,
+    selectedUnitResult: String? = null,
+    onUnitResultConsumed: () -> Unit = {},
+    onUnitSelection: (String) -> Unit = {},
 ) {
     var state by rememberSaveable(stateSaver = registrationFormStateSaver) {
         mutableStateOf(RegistrationFormState())
+    }
+    LaunchedEffect(selectedUnitResult) {
+        selectedUnitResult?.let {
+            state = state.copy(selectedUnitSymbol = it, errorField = null, errorMessage = null)
+            onUnitResultConsumed()
+        }
     }
 
     LaunchedEffect(state.name) {
@@ -108,7 +115,7 @@ fun RegistrationScreen(
             )
         },
         onQuantityChange = { state = state.copy(quantity = it, errorField = null, errorMessage = null) },
-        onUnitChange = { state = state.copy(selectedUnitSymbol = it, errorField = null, errorMessage = null) },
+        onUnitSelection = onUnitSelection,
         onSubmit = { submit() },
         onSelectExisting = { onEditIngredient(it.id) },
         onBack = onBack,
@@ -120,7 +127,7 @@ internal fun RegistrationContent(
     state: RegistrationFormState,
     onNameChange: (String) -> Unit,
     onQuantityChange: (String) -> Unit,
-    onUnitChange: (String) -> Unit,
+    onUnitSelection: (String) -> Unit,
     onSubmit: suspend () -> Unit,
     onSelectExisting: (com.quotto.fridgemanager.domain.inventory.StoredIngredient) -> Unit,
     onBack: () -> Unit = {},
@@ -163,7 +170,10 @@ internal fun RegistrationContent(
                 modifier = Modifier.fillMaxWidth().focusRequester(quantityFocus)
                     .semantics { contentDescription = "在庫数、必須" },
             )
-            UnitSelector(state.selectedUnitSymbol, onUnitChange)
+            UnitSelectionButton(
+                selectedSymbol = state.selectedUnitSymbol,
+                onClick = { onUnitSelection(state.selectedUnitSymbol) },
+            )
 
             state.errorMessage?.takeIf { state.errorField == null }?.let {
                 Text(
@@ -175,18 +185,37 @@ internal fun RegistrationContent(
 
             state.suggestions.forEach { suggestion ->
                 val item = suggestion.ingredient
-                Row(
-                    modifier = Modifier.fillMaxWidth()
-                        .clickable(role = Role.Button) { onSelectExisting(item) }
-                        .padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text("${item.name.value}  ${item.quantity} ${item.unit.symbol}")
-                    Text(if (suggestion.isExactMatch) "既存在庫" else "候補")
-                }
                 if (suggestion.isExactMatch) {
-                    OutlinedButton(onClick = { onSelectExisting(item) }) {
-                        Text("${item.name.value}の在庫を更新")
+                    Surface(
+                        shape = MaterialTheme.shapes.medium,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)
+                            .clickable(role = Role.Button) { onSelectExisting(item) }
+                            .semantics(mergeDescendants = true) {
+                                contentDescription =
+                                    "${item.name.value}、現在の在庫は${item.quantity}${item.unit.symbol}、登録済み、タップして更新"
+                            },
+                    ) {
+                        Column(
+                            Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                "登録済みの食材です。ここから更新してください。",
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            Text("${item.name.value}  現在の在庫: ${item.quantity} ${item.unit.symbol}")
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                            .clickable(role = Role.Button) { onSelectExisting(item) }
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("${item.name.value}  ${item.quantity} ${item.unit.symbol}")
+                        Text("似ている食材候補")
                     }
                 }
             }
@@ -197,26 +226,6 @@ internal fun RegistrationContent(
                 modifier = Modifier.fillMaxWidth().focusRequester(submitFocus),
             ) {
                 Text(if (state.isSaving) "保存中" else "新規登録")
-            }
-        }
-    }
-}
-
-@Composable
-private fun UnitSelector(selected: String, onSelected: (String) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Column {
-        Text("単位（必須）")
-        OutlinedButton(
-            onClick = { expanded = true },
-            modifier = Modifier.semantics { contentDescription = "単位、必須、選択中は$selected" },
-        ) { Text(selected) }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            InventoryUnit.entries.forEach { unit ->
-                DropdownMenuItem(
-                    text = { Text(unit.symbol) },
-                    onClick = { onSelected(unit.symbol); expanded = false },
-                )
             }
         }
     }

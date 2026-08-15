@@ -37,9 +37,14 @@ class PreprocessedImage internal constructor(
     val width: Int,
     val height: Int,
     val lowResolutionWarning: Boolean,
+    private val deleteOrSchedule: (File) -> ImageDeletionResult = { candidate ->
+        candidate.parentFile?.let { parent ->
+            ImageTemporaryFileCleaner(parent).deleteOrSchedule(candidate)
+        } ?: ImageDeletionResult.Rejected
+    },
 ) : Closeable {
     override fun close() {
-        file.delete()
+        deleteOrSchedule(file)
     }
 }
 
@@ -49,6 +54,8 @@ class ImagePreprocessor(
     private val workerDispatcher: CoroutineDispatcher = Dispatchers.IO,
     internal val afterProcessing: () -> Unit = {},
 ) {
+    private val temporaryFileCleaner = ImageTemporaryFileCleaner(context.cacheDir)
+
     suspend fun process(asset: ImageInputAsset): PreprocessedImage = suspendCancellableCoroutine { continuation ->
         // キュー待ち中のキャンセルでも撮影一時ファイルの所有権を確実に返す。
         continuation.invokeOnCancellation { asset.close() }
@@ -102,6 +109,7 @@ class ImagePreprocessor(
                 width = encoded.width,
                 height = encoded.height,
                 lowResolutionWarning = min(encoded.width, encoded.height) < MIN_RECOMMENDED_SHORT_EDGE,
+                deleteOrSchedule = temporaryFileCleaner::deleteOrSchedule,
             ).also {
                 encoded.recycle()
                 output = null
@@ -114,8 +122,8 @@ class ImagePreprocessor(
             throw ImagePreprocessingException.ProcessingFailed(error)
         } finally {
             listOfNotNull(decoded, oriented, normalized).distinct().forEach { if (!it.isRecycled) it.recycle() }
-            source?.delete()
-            output?.delete()
+            source?.let(temporaryFileCleaner::deleteOrSchedule)
+            output?.let(temporaryFileCleaner::deleteOrSchedule)
             asset.close()
         }
     }

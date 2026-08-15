@@ -4,6 +4,7 @@ import android.database.sqlite.SQLiteConstraintException
 import androidx.room.withTransaction
 import com.quotto.fridgemanager.domain.inventory.IngredientName
 import com.quotto.fridgemanager.domain.inventory.InventoryBatch
+import com.quotto.fridgemanager.domain.inventory.InventoryCommit
 import com.quotto.fridgemanager.domain.inventory.InventoryQuantity
 import com.quotto.fridgemanager.domain.inventory.InventoryRepository
 import com.quotto.fridgemanager.domain.inventory.InventoryUnit
@@ -96,6 +97,49 @@ class RoomInventoryRepository(
             database.withTransaction { dao.insertAll(entities) }
         } catch (error: SQLiteConstraintException) {
             // 食材名やSQL引数を例外文へ含めない。
+            throw DuplicateStoredIngredientException(error)
+        }
+    }
+
+    override suspend fun commit(commit: InventoryCommit) {
+        require(commit.size <= InventoryBatch.MAX_ITEMS) { "Commit exceeds storage limit" }
+        val now = currentTimeMillis()
+        val entities = commit.newItems.map { draft ->
+            IngredientEntity(
+                id = idGenerator(),
+                displayName = draft.name.value,
+                normalizedName = draft.name.normalizedValue,
+                quantity = draft.quantity.toString(),
+                unit = draft.unit.name,
+                createdAtEpochMillis = now,
+                updatedAtEpochMillis = now,
+            )
+        }
+        try {
+            database.withTransaction {
+                commit.updates.forEach { ingredient ->
+                    val nextRevision = try {
+                        Math.addExact(ingredient.updatedAtEpochMillis, 1L)
+                    } catch (error: ArithmeticException) {
+                        throw CorruptStoredIngredientException(error)
+                    }
+                    val count = dao.updateIfCurrent(
+                        id = ingredient.id,
+                        expectedUpdatedAt = ingredient.updatedAtEpochMillis,
+                        displayName = ingredient.name.value,
+                        normalizedName = ingredient.name.normalizedValue,
+                        quantity = ingredient.quantity.toString(),
+                        unit = ingredient.unit.name,
+                        updatedAt = maxOf(now, nextRevision),
+                    )
+                    if (count == 0) {
+                        if (dao.getById(ingredient.id) == null) throw StoredIngredientNotFoundException()
+                        throw StaleStoredIngredientException()
+                    }
+                }
+                dao.insertAll(entities)
+            }
+        } catch (error: SQLiteConstraintException) {
             throw DuplicateStoredIngredientException(error)
         }
     }
