@@ -174,6 +174,7 @@ describe('cloud deployment workflow', () => {
     expect(script).toContain('action: "block"');
     expect(script).toContain('action_parameters');
     expect(script).toContain('/rulesets/${ruleset_id}/rules');
+    expect(script).toContain('rules: $rule[0]');
     expect(script).toContain('hostname AOP is not active');
     expect(script).toContain('/settings/ssl');
     expect(script).toContain('result.value == "strict"');
