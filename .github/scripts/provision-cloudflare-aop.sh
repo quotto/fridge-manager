@@ -62,10 +62,15 @@ header = "Content-Type: application/json"
 EOF
 jq -n --rawfile certificate "$work_dir/leaf.pem" --rawfile private_key "$work_dir/leaf-key.pem" \
   '{certificate: $certificate, private_key: $private_key}' >"$work_dir/upload.json"
-curl --fail-with-body --silent --show-error --config "$work_dir/curl.conf" \
+if ! curl --fail-with-body --silent --show-error --config "$work_dir/curl.conf" \
   --data @"$work_dir/upload.json" \
   "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/origin_tls_client_auth/hostnames/certificates" \
-  >"$work_dir/upload-response.json"
+  >"$work_dir/upload-response.json"; then
+  echo 'Cloudflare AOP certificate upload failed:' >&2
+  jq -c '{success, errors: (.errors | map({code, message}))}' "$work_dir/upload-response.json" >&2 || \
+    echo '{"success":false,"errors":[{"message":"Cloudflare returned a non-JSON response"}]}' >&2
+  exit 1
+fi
 certificate_id="$(jq -er 'select(.success == true) | .result.id' "$work_dir/upload-response.json")"
 
 active_manifest_key="aop/${target}/active-manifest.json"
