@@ -179,6 +179,7 @@ describe('cloud deployment workflow', () => {
     expect(script).toContain('result.value == "strict"');
     expect(script).toContain('fridge-manager-stg.wackwack.net');
     expect(script).toContain('fridge-manager.wackwack.net');
+    expect(script).toContain('Cloudflare configuration failed near script line');
   });
 
   it('初回bootstrapはFoundation、AOP truststore、API Gateway custom domainの順に配備する', () => {
