@@ -3,6 +3,8 @@ set -euo pipefail
 set +x
 umask 077
 
+trap 'echo "Cloudflare configuration failed near script line ${LINENO}" >&2' ERR
+
 target="${TARGET:-}"
 case "$target" in
   stg) hostname='fridge-manager-stg.wackwack.net' ;;
