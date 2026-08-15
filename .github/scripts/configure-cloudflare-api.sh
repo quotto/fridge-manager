@@ -5,6 +5,14 @@ umask 077
 
 trap 'echo "Cloudflare configuration failed near script line ${LINENO}" >&2' ERR
 
+show_cloudflare_errors() {
+  local response_file="$1"
+  [[ -s "$response_file" ]] || return 0
+  # API errors contain no credential material; expose only their stable code/message
+  # pair so a failed CI run is actionable without printing request headers or bodies.
+  jq -c '{success, errors: [.errors[]? | {code, message}]}' "$response_file" >&2 || true
+}
+
 target="${TARGET:-}"
 case "$target" in
   stg) hostname='fridge-manager-stg.wackwack.net' ;;
@@ -103,11 +111,14 @@ case "$entrypoint_status" in
     ;;
   404)
     jq -n --slurpfile rule "$work_dir/rate-rule.json" \
-      '{name: "fridge-manager-api-rate-limit", description: "Managed by fridge-manager repository", kind: "zone", phase: "http_ratelimit", rules: $rule[0]}' \
+      '{name: "fridge-manager-api-rate-limit", description: "Managed by fridge-manager repository", kind: "zone", phase: "http_ratelimit", rules: $rule}' \
       >"$work_dir/rate-ruleset.json"
-    curl --fail-with-body --silent --show-error --config "$work_dir/curl.conf" --request POST \
+    if ! curl --fail-with-body --silent --show-error --config "$work_dir/curl.conf" --request POST \
       --data @"$work_dir/rate-ruleset.json" \
-      "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/rulesets" >"$work_dir/rate-write.json"
+      "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/rulesets" >"$work_dir/rate-write.json"; then
+      show_cloudflare_errors "$work_dir/rate-write.json"
+      exit 1
+    fi
     ;;
   *)
     echo "unable to read Cloudflare rate limiting entrypoint (HTTP ${entrypoint_status})" >&2
