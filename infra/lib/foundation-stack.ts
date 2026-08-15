@@ -51,10 +51,9 @@ export class FoundationStack extends Stack {
 
     if (config.environment !== 'dev') {
       const truststore = new s3.Bucket(this, 'AopTruststore', {
-        // truststore は公開CA chainだけを置く。CMKで暗号化し、API Gatewayの
-        // バージョン固定参照にも対応する。
-        encryption: s3.BucketEncryption.KMS,
-        encryptionKey,
+        // truststore は公開 CA chain のみを置く。API Gateway mTLS が確実に
+        // バージョン固定参照できる S3 管理暗号化を使用する。
+        encryption: s3.BucketEncryption.S3_MANAGED,
         blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
         enforceSSL: true,
         versioned: true,
@@ -68,12 +67,6 @@ export class FoundationStack extends Stack {
         principals: [new iam.ServicePrincipal('apigateway.amazonaws.com')],
         actions: ['s3:GetObject', 's3:GetObjectVersion'],
         resources: [truststoreObjectArn],
-      }));
-      encryptionKey.addToResourcePolicy(new iam.PolicyStatement({
-        sid: 'AllowApiGatewayDecryptMtlsTruststore',
-        principals: [new iam.ServicePrincipal('apigateway.amazonaws.com')],
-        actions: ['kms:Decrypt'],
-        resources: ['*'],
       }));
       new CfnOutput(this, 'AopTruststoreBucketName', {
         value: truststore.bucketName,
