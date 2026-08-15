@@ -38,9 +38,6 @@ aop_truststore_version="$(aws s3 cp "s3://${truststore_bucket}/${manifest_key}" 
   exit 2
 }
 
-npx cdk deploy "$api_stack" --app "$assembly" \
-# CloudFormationはROLLBACK_COMPLETEのstackを更新できない。quota待ちで失敗した
-# stg API stackだけを再作成可能にし、foundationとprodは削除対象にしない。
 if [[ "$environment" == stg ]]; then
   stack_status="$(aws cloudformation describe-stacks --stack-name "$api_stack" --query 'Stacks[0].StackStatus' --output text 2>/dev/null || true)"
   if [[ "$stack_status" == ROLLBACK_COMPLETE ]]; then
@@ -48,6 +45,7 @@ if [[ "$environment" == stg ]]; then
     aws cloudformation wait stack-delete-complete --stack-name "$api_stack"
   fi
 fi
+npx cdk deploy "$api_stack" --app "$assembly" \
   --exclusively \
   --rollback \
   --require-approval never \
@@ -57,7 +55,6 @@ fi
   --parameters "${api_stack}:FirebaseAppIds=${FIREBASE_APP_IDS}" \
   --parameters "${api_stack}:GoogleWifAudience=${GOOGLE_WIF_AUDIENCE}" \
   --parameters "${api_stack}:GoogleServiceAccountEmail=${GOOGLE_SERVICE_ACCOUNT_EMAIL}" \
-  --parameters "${api_stack}:OperationsNotificationEmail=${OPERATIONS_NOTIFICATION_EMAIL}"
   --parameters "${api_stack}:OperationsNotificationEmail=${OPERATIONS_NOTIFICATION_EMAIL}" \
   --parameters "${api_stack}:AcmCertificateArn=${ACM_CERTIFICATE_ARN}" \
   --parameters "${api_stack}:AopTruststoreVersion=${aop_truststore_version}"
