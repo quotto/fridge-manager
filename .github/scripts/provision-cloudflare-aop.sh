@@ -29,12 +29,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-cat >"$work_dir/ca-ext.cnf" <<'EOF'
-basicConstraints=critical,CA:TRUE,pathlen:0
-keyUsage=critical,keyCertSign,cRLSign
-subjectKeyIdentifier=hash
-authorityKeyIdentifier=keyid:always
-EOF
 cat >"$work_dir/leaf-ext.cnf" <<EOF
 basicConstraints=critical,CA:FALSE
 keyUsage=critical,digitalSignature,keyEncipherment
@@ -47,7 +41,8 @@ EOF
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$work_dir/ca-key.pem" >/dev/null 2>&1
 openssl req -x509 -new -sha256 -days 90 -key "$work_dir/ca-key.pem" \
   -subj "/CN=fridge-manager-${target}-cloudflare-aop-ca" -out "$work_dir/ca.pem" \
-  -extfile "$work_dir/ca-ext.cnf" >/dev/null 2>&1
+  -addext 'basicConstraints=critical,CA:TRUE,pathlen:0' \
+  -addext 'keyUsage=critical,keyCertSign,cRLSign' >/dev/null 2>&1
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$work_dir/leaf-key.pem" >/dev/null 2>&1
 openssl req -new -sha256 -key "$work_dir/leaf-key.pem" \
   -subj "/CN=${hostname}" -out "$work_dir/leaf.csr" >/dev/null 2>&1

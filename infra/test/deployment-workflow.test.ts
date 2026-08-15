@@ -131,6 +131,8 @@ describe('cloud deployment workflow', () => {
     const script = read('.github/scripts/provision-cloudflare-aop.sh');
     expect(script).toContain('bash .github/scripts/verify-aws-account.sh');
     expect(script).toContain('openssl x509 -req -sha256 -days 89');
+    expect(script).toContain("-addext 'basicConstraints=critical,CA:TRUE,pathlen:0'");
+    expect(script).not.toContain('ca-ext.cnf');
     expect(script).toContain('Cloudflare AOP certificate upload failed:');
     expect(script).toContain("jq -c '{success, errors: (.errors | map({code, message}))}'");
     expect(script).toContain('if ! certificate_id="$(jq -er');
