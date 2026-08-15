@@ -4,7 +4,7 @@
 misconfigurations:
   - id: AWS-0132
     paths:
-      - cdk.out/FridgeManagerStgFoundation.template.json
-      - cdk.out/FridgeManagerProdFoundation.template.json
+      - FridgeManagerStgFoundation.template.json
+      - FridgeManagerProdFoundation.template.json
     expired_at: 2027-08-15
     statement: API Gateway mutual TLS truststore only; public CA chain requires SSE-S3 compatibility.
