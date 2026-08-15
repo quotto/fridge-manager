@@ -50,7 +50,7 @@ GitHub artifact保持は90日であるため、prod稼働中の現行・既知�
 
 1. `Bootstrap Cloudflare API Origin` workflowを対象環境で起動する。Foundation、AOP用CA truststore、API Gateway Regional custom domain/mTLSの順に作成する。
 2. `Activate Cloudflare AOP` workflowを起動する。workflowはAPI Gatewayに配備済みのtruststore versionがAOP manifestと一致する場合だけ、Cloudflare hostname AOPを有効化する。
-3. `Configure Cloudflare API Edge` workflowを起動し、AOPのcertificate ID一致を確認した後でのみ、API GatewayのRegional domainをCNAMEのプロキシ有効レコードとして設定する。Cloudflare Free の Rate Limiting Ruleは両hostnameを一つのruleで扱い、`ip.src` と `cf.colo.id` ごとに `POST /v1/analysis` を合算で1回/10秒（最大6回/分相当）に制限する。
+3. `Configure Cloudflare API Edge` workflowを起動し、AOPのcertificate ID一致を確認した後でのみ、API GatewayのRegional domainをCNAMEのプロキシ有効レコードとして設定する。Cloudflare Free の Rate Limiting Ruleは両hostnameを一つのruleで扱い、`ip.src` と `cf.colo.id` ごとに `POST /v1/analysis` を合算で1回/10秒（最大6回/分相当）に制限し、超過時は10秒間ブロックする。
 4. Cloudflare経由の未認証拒否、認証済み正常系、11回目の429、API Gateway custom domainへのmTLSなし直接要求の拒否、`execute-api` endpointの拒否を確認し、Issueへ結果のみを記録する。
 
 CA/leaf証明書の有効期間は短いため、60日ごと、かつ期限の14日前までに同じ順序で更新する。更新では新旧CAを束ねたpending truststore versionを先にAPI Gatewayへ配備し、AOP有効化後に新CAだけをactiveとして記録するため、旧leafを先に拒否しない。障害時はCloudflare DNSを一時的にDNS onlyへ切り替えるのではなく、既知良好なCA versionへCloudFormation rollbackし、AOPをその証明書IDへ再関連付けする。mTLSを無効化して復旧しない。
