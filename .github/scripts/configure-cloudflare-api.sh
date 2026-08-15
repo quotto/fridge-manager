@@ -103,7 +103,7 @@ case "$entrypoint_status" in
     ;;
   404)
     jq -n --slurpfile rule "$work_dir/rate-rule.json" \
-      '{name: "fridge-manager-api-rate-limit", description: "Managed by fridge-manager repository", kind: "zone", phase: "http_ratelimit", rules: $rule}' \
+      '{name: "fridge-manager-api-rate-limit", description: "Managed by fridge-manager repository", kind: "zone", phase: "http_ratelimit", rules: $rule[0]}' \
       >"$work_dir/rate-ruleset.json"
     curl --fail-with-body --silent --show-error --config "$work_dir/curl.conf" --request POST \
       --data @"$work_dir/rate-ruleset.json" \
