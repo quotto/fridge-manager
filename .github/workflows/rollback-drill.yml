@@ -7,7 +7,7 @@ jobs:
     timeout-minutes: 30
     environment: staging
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with: { persist-credentials: false }
       - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4
         with: { role-to-assume: "${{ vars.AWS_OPERATIONS_ROLE_ARN }}", aws-region: ap-northeast-1 }

@@ -13,7 +13,7 @@ jobs:
     environment: production-plan
     env: { AWS_ACCOUNT_ID: "${{ vars.AWS_ACCOUNT_ID }}" }
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with: { persist-credentials: false }
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: "22", cache: npm }
@@ -41,7 +41,7 @@ jobs:
       GOOGLE_SERVICE_ACCOUNT_EMAIL: ${{ vars.GOOGLE_SERVICE_ACCOUNT_EMAIL }}
       OPERATIONS_NOTIFICATION_EMAIL: ${{ secrets.OPERATIONS_NOTIFICATION_EMAIL }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with: { persist-credentials: false }
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: "22", cache: npm }
